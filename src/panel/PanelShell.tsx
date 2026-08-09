@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect } from "react";
 import { togglePanel } from "../shared/bus";
 import { applyTheme } from "../shared/theme";
+import { ChangelogView } from "./ChangelogView";
 import { Footer } from "./Footer";
 import { MainView } from "./MainView";
 import { usePanelStore } from "./panelStore";
@@ -31,8 +32,9 @@ export function PanelShell() {
     localStorage.removeItem("companion.ui.sectionsH");
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
-      const { view: current, closeSettings } = useViewStore.getState();
-      if (current === "settings") closeSettings();
+      const { view: current, closeSettings, closeChangelog } = useViewStore.getState();
+      if (current === "changelog") closeChangelog();
+      else if (current === "settings") closeSettings();
       else void togglePanel();
     };
     window.addEventListener("keydown", onKey);
@@ -47,9 +49,13 @@ export function PanelShell() {
             <motion.div key="main" className="h-full" {...viewMotion(-1)}>
               <MainView />
             </motion.div>
-          ) : (
+          ) : view === "settings" ? (
             <motion.div key="settings" className="h-full" {...viewMotion(1)}>
               <SettingsView />
+            </motion.div>
+          ) : (
+            <motion.div key="changelog" className="h-full" {...viewMotion(1)}>
+              <ChangelogView />
             </motion.div>
           )}
         </AnimatePresence>

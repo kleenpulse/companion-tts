@@ -1,24 +1,12 @@
 import { ArrowLeft, X } from "lucide-react";
-import { useEffect, useRef } from "react";
 import { togglePanel } from "../shared/bus";
-import { ChangelogSection } from "./ChangelogSection";
+import { releases } from "./changelogData";
 import { onHeaderPointerDown } from "./dragRegion";
-import { ProviderCard } from "./ProviderCard";
-import { SettingsSection } from "./SettingsSection";
-import { Toggles } from "./Toggles";
 import { useViewStore } from "./viewStore";
 
-export function SettingsView() {
-  const closeSettings = useViewStore((s) => s.closeSettings);
-  const settingsFocus = useViewStore((s) => s.settingsFocus);
-  const voiceRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (settingsFocus !== "voice") return;
-    voiceRef.current?.scrollIntoView({ block: "start" });
-    voiceRef.current?.focus({ preventScroll: true });
-    useViewStore.getState().clearSettingsFocus();
-  }, [settingsFocus]);
+/** Full release history from the bundled CHANGELOG.md — read-only browser. */
+export function ChangelogView() {
+  const closeChangelog = useViewStore((s) => s.closeChangelog);
 
   return (
     <div className="flex h-full flex-col">
@@ -27,14 +15,14 @@ export function SettingsView() {
         className="flex cursor-grab items-center gap-2 border-b border-hairline px-3 py-2.5 active:cursor-grabbing"
       >
         <button
-          aria-label="Back to main view"
-          onClick={closeSettings}
+          aria-label="Back to settings"
+          onClick={closeChangelog}
           className="rounded-md p-1 text-ink-mute transition-colors duration-200 hover:bg-raised hover:text-ink"
         >
           <ArrowLeft size={14} strokeWidth={2} />
         </button>
         <span className="flex-1 font-display text-[10px] uppercase tracking-[0.15em] text-ink-mute">
-          Settings
+          Changelog
         </span>
         <button
           aria-label="Close panel"
@@ -46,15 +34,23 @@ export function SettingsView() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="px-3 pt-2 font-display text-[10px] uppercase tracking-[0.15em] text-ink-mute">
-          Toggles
+        <div className="flex flex-col gap-3.5 px-3 py-3">
+          {releases.map((r) => (
+            <div key={r.version}>
+              <div className="font-display text-[11px] uppercase tracking-[0.15em] text-accent">
+                v{r.version}
+                {r.date && <span className="text-ink-mute"> · {r.date}</span>}
+              </div>
+              <ul className="mt-1 flex flex-col gap-1">
+                {r.entries.map((e, i) => (
+                  <li key={i} className="text-[12px] leading-snug text-ink-dim">
+                    <span className="text-ink-mute">{e.category}</span> {e.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
-        <Toggles />
-        <div ref={voiceRef} tabIndex={-1} className="outline-none">
-          <ProviderCard />
-        </div>
-        <SettingsSection />
-        <ChangelogSection />
       </div>
     </div>
   );

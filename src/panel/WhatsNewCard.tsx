@@ -10,7 +10,7 @@ const MAX_LINES = 5;
 /** One-shot upgrade notice — shown until dismissed, then lastSeenVersion catches up. */
 export function WhatsNewCard() {
   const { settings, appVersion, saveSettings } = usePanelStore();
-  const openSettings = useViewStore((s) => s.openSettings);
+  const openChangelog = useViewStore((s) => s.openChangelog);
 
   const show =
     !!settings &&
@@ -60,7 +60,7 @@ export function WhatsNewCard() {
             )}
             <button
               onClick={() => {
-                openSettings("changelog");
+                openChangelog();
                 dismiss();
               }}
               className="mt-1.5 font-display text-[9px] uppercase tracking-[0.15em] text-ink-mute transition-colors duration-200 hover:text-accent"
