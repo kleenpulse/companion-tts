@@ -28,20 +28,28 @@ export function Footer() {
 
   return (
     <footer className="grid grid-cols-[1fr_auto_1fr] items-center border-t border-hairline px-3 py-2">
-      <span className="flex items-center gap-1.5 justify-self-start font-display text-[9px] uppercase tracking-[0.15em] text-ink-mute">
-        <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-        {label}
+      {/* Narrow panel sheds cosmetics, never signals: version → cost → status
+          text (dot stays). Health dot and the voice shortcut always survive. */}
+      <span
+        title={label}
+        className="flex items-center gap-1.5 justify-self-start whitespace-nowrap font-display text-[9px] uppercase tracking-[0.15em] text-ink-mute"
+      >
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
+        <span className="hidden min-[390px]:inline">{label}</span>
       </span>
       <button
         onClick={() => openSettings("voice")}
         title="Voice settings"
-        className="justify-self-center font-display text-[9px] uppercase tracking-[0.15em] text-ink-mute transition-colors duration-200 hover:text-ink"
+        className="justify-self-center whitespace-nowrap font-display text-[9px] uppercase tracking-[0.15em] text-ink-mute transition-colors duration-200 hover:text-ink"
       >
         voice: {voiceMode}
       </button>
       <span className="justify-self-end whitespace-nowrap font-display text-[9px] uppercase tracking-[0.15em] text-ink-mute">
-        {compactChars(chars)} chars · {costEstimate(chars)} mo
-        {appVersion && ` · v${appVersion}`}
+        {compactChars(chars)} chars
+        <span className="hidden min-[430px]:inline"> · {costEstimate(chars)} mo</span>
+        {appVersion && (
+          <span className="hidden min-[480px]:inline"> · v{appVersion}</span>
+        )}
       </span>
     </footer>
   );
