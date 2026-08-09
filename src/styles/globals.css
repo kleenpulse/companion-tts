@@ -1,0 +1,152 @@
+@import "tailwindcss";
+
+/*
+ * Companion TTS — house token system, ported from shadow-garden.
+ * Dark-native instrument panel: graphite bench ramp, single amethyst accent,
+ * hairline borders, Space Mono micro-labels. Light variant flips the semantic
+ * tokens via html[data-theme="light"] below.
+ */
+@theme {
+  /* graphite bench ramp */
+  --color-bench-950: #0a0b0c;
+  --color-bench-900: #0e1012;
+  --color-bench-850: #131619;
+  --color-bench-800: #191d21;
+  --color-bench-700: #2a2f36;
+  --color-bench-500: #5c656e;
+  --color-bench-400: #9ba3ab;
+  --color-bench-100: #e2e6e9;
+
+  /* semantic roles */
+  --color-surface: #0a0b0c;
+  --color-panel: #0e1012;
+  --color-raised: #191d21;
+  --color-hairline: #2a2f36;
+  --color-ink: #e2e6e9;
+  --color-ink-dim: #9ba3ab;
+  --color-ink-mute: #5c656e;
+  --color-accent: #a855f7;
+  --color-accent-hover: #b87df9;
+  --color-danger: #f87171;
+
+  /* type roles */
+  --font-display: "Space Mono", ui-monospace, monospace;
+  --font-sans: "Geist Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, monospace;
+}
+
+/* Transparent ground — the OS window is the canvas, the card paints itself. */
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+/*
+ * Light bench — semantic roles + the two chrome bench steps flip.
+ * Raw dark bench (950–800) never re-themes: viz lens fields stay dark
+ * in any theme (additive ribbons need a dark ground).
+ */
+html[data-theme="light"] {
+  --color-surface: #eceef1;
+  --color-panel: #f6f7f8;
+  --color-raised: #e3e7ea;
+  --color-hairline: #d0d5da;
+  --color-ink: #191d21;
+  --color-ink-dim: #4b545d;
+  --color-ink-mute: #636b74;
+  --color-accent: #7e22ce;
+  --color-accent-hover: #6b21a8;
+  --color-danger: #dc2626;
+  --color-bench-700: #dde1e5;
+  --color-bench-500: #b8bfc6;
+}
+
+/* typewriter reveal (feed's spoken row) — opacity-only so wrapping/spaces
+   stay intact and revealing causes zero reflow across hundreds of glyphs */
+.brief-char {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+.brief-char.is-shown {
+  opacity: 1;
+}
+
+/* the magenta→violet→cyan signature — speaking state only */
+.grainient-ring {
+  background: conic-gradient(
+    from 0deg,
+    #f754f1,
+    #6d28d9 40%,
+    #22d3ee 70%,
+    #f754f1 100%
+  );
+}
+
+/* a11y floor */
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--color-accent) 26%, transparent);
+}
+
+/* hairline scrollbars */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-hairline);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-mute);
+}
+
+/* volume / native range styled to the bench */
+input[type="range"] {
+  appearance: none;
+  height: 2px;
+  background: var(--color-hairline);
+  border-radius: 999px;
+}
+input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  border: none;
+  cursor: pointer;
+}
+input[type="range"]:hover::-webkit-slider-thumb {
+  background: var(--color-accent-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

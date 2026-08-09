@@ -1,0 +1,11 @@
+# espeak-rs (piper-rs dep) runs bindgen at build time, which needs libclang.
+# Sourced from the pip `libclang` wheel — no LLVM install required.
+[env]
+LIBCLANG_PATH = "C:\\Users\\skyep\\AppData\\Roaming\\Python\\Python314\\site-packages\\clang\\native"
+# bindgen's clang doesn't inherit MSVC's header search the way the cc crate
+# does — hand it the MSVC + Windows SDK system includes explicitly.
+BINDGEN_EXTRA_CLANG_ARGS = "-isystem \"C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\14.44.35207\\include\" -isystem \"C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.26100.0\\ucrt\" -isystem \"C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.26100.0\\um\" -isystem \"C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.26100.0\\shared\""
+# espeak-ng's C build (espeak-rs-sys) goes through cmake — pip wheel, and the
+# generator matching the installed 2022 Build Tools (the default guess is wrong).
+CMAKE = "C:\\Users\\skyep\\AppData\\Roaming\\Python\\Python314\\Scripts\\cmake.exe"
+CMAKE_GENERATOR = "Visual Studio 17 2022"

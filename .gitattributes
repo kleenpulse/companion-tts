@@ -1,0 +1,2 @@
+# espeak-ng data is a byte-exact runtime payload read by C code — never normalize
+src-tauri/resources/espeak-ng-data/** -text

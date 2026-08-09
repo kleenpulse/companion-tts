@@ -1,0 +1,36 @@
+[package]
+name = "companion-tts"
+version = "0.1.0"
+description = "Speaks Claude Code's output aloud from a floating companion"
+authors = ["skyep"]
+edition = "2021"
+
+[lib]
+name = "companion_tts_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+notify = "8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+base64 = "0.22"
+piper-rs = "0.2"
+windows = { version = "0.61", features = [
+  "Media_SpeechSynthesis",
+  "Media_Core",
+  "Storage_Streams",
+  "Foundation",
+  "Foundation_Collections",
+] }
+
+[dev-dependencies]
+tempfile = "3"
