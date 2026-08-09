@@ -42,22 +42,8 @@ export function Header() {
 			className="cursor-grab border-b border-hairline px-3 py-2.5 active:cursor-grabbing"
 		>
 			<div className="flex items-center gap-2">
-				<div className="min-w-0 flex-1">
-					<div className="font-display text-[10px] uppercase tracking-[0.15em] text-ink-mute">
-						Companion
-					</div>
-					<div className="truncate text-[13px] font-medium text-ink">
-						{followed ? (
-							<>
-								<span className="text-ink-mute uppercase text-xs">
-									{projectName(followed.projectSlug)}:{" "}
-								</span>
-								{shortTitle(followed.title, followed.projectSlug)}
-							</>
-						) : (
-							"No session followed"
-						)}
-					</div>
+				<div className="flex-1 font-display text-[10px] uppercase tracking-[0.15em] text-ink-mute">
+					Companion
 				</div>
 				<button
 					aria-label={
@@ -88,6 +74,18 @@ export function Header() {
 				>
 					<X size={14} strokeWidth={2} />
 				</button>
+			</div>
+			<div className="mt-1.5 truncate text-[13px] font-medium text-ink">
+				{followed ? (
+					<>
+						<span className="text-ink-mute uppercase text-xs">
+							{projectName(followed.projectSlug)}:{" "}
+						</span>
+						{shortTitle(followed.title, followed.projectSlug)}
+					</>
+				) : (
+					"No session followed"
+				)}
 			</div>
 			<div className="mt-2 flex items-center justify-between">
 				<span className="font-display text-[10px] uppercase tracking-[0.15em] text-ink-mute">

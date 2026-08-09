@@ -125,6 +125,7 @@ pub struct Settings {
     pub visualizer_style: String, // "waves" | "strands"
     pub typewriter: bool,         // feed reveals spoken row in sync with playback
     pub theme: String,            // "dark" | "light" | "system"
+    pub last_seen_version: String, // last What's New acknowledged; "" = never seeded
     pub fab_scale: f64,           // 0.75..=3.0, dial + window scale together
     pub hidden_sessions: Vec<String>,
     pub fab_position: Option<FabPos>,
@@ -153,6 +154,7 @@ impl Default for Settings {
             visualizer_style: "strands".into(),
             typewriter: false,
             theme: "dark".into(),
+            last_seen_version: String::new(),
             fab_scale: 1.0,
             hidden_sessions: Vec::new(),
             fab_position: None,
@@ -484,6 +486,13 @@ mod tests {
         let raw = r#"{"voices":{"elevenlabs":"x","mistral":"y"}}"#;
         let s: Settings = serde_json::from_str(raw).unwrap();
         assert!(!s.typewriter);
+    }
+
+    #[test]
+    fn old_settings_json_lacking_last_seen_version_defaults_empty() {
+        let raw = r#"{"voices":{"elevenlabs":"x","mistral":"y"}}"#;
+        let s: Settings = serde_json::from_str(raw).unwrap();
+        assert_eq!(s.last_seen_version, "");
     }
 }
 

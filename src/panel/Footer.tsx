@@ -3,7 +3,7 @@ import { usePanelStore } from "./panelStore";
 import { useViewStore } from "./viewStore";
 
 export function Footer() {
-  const { settings, watcherStatus, engineState } = usePanelStore();
+  const { settings, watcherStatus, engineState, appVersion } = usePanelStore();
   const openSettings = useViewStore((s) => s.openSettings);
   const chars = settings?.monthly.chars ?? 0;
 
@@ -39,8 +39,9 @@ export function Footer() {
       >
         voice: {voiceMode}
       </button>
-      <span className="justify-self-end font-display text-[9px] uppercase tracking-[0.15em] text-ink-mute">
+      <span className="justify-self-end whitespace-nowrap font-display text-[9px] uppercase tracking-[0.15em] text-ink-mute">
         {compactChars(chars)} chars · {costEstimate(chars)} mo
+        {appVersion && ` · v${appVersion}`}
       </span>
     </footer>
   );

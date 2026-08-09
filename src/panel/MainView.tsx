@@ -4,6 +4,7 @@ import { SectionResizer } from "./SectionResizer";
 import { SessionList } from "./SessionList";
 import { TranscriptFeed } from "./TranscriptFeed";
 import { Transport } from "./Transport";
+import { WhatsNewCard } from "./WhatsNewCard";
 
 const SESSIONS_MIN = 72;
 const SESSIONS_MAX = 320;
@@ -28,6 +29,7 @@ export function MainView() {
   return (
     <div className="flex h-full flex-col">
       <Header />
+      <WhatsNewCard />
 
       {/* Sessions: user-sized, scrolls within itself. Floor fits the header
           plus one full session row. */}

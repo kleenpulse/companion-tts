@@ -1,6 +1,7 @@
 import { ArrowLeft, X } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { togglePanel } from "../shared/bus";
+import { ChangelogSection } from "./ChangelogSection";
 import { onHeaderPointerDown } from "./dragRegion";
 import { ProviderCard } from "./ProviderCard";
 import { SettingsSection } from "./SettingsSection";
@@ -11,11 +12,14 @@ export function SettingsView() {
   const closeSettings = useViewStore((s) => s.closeSettings);
   const settingsFocus = useViewStore((s) => s.settingsFocus);
   const voiceRef = useRef<HTMLDivElement>(null);
+  const changelogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (settingsFocus !== "voice") return;
-    voiceRef.current?.scrollIntoView({ block: "start" });
-    voiceRef.current?.focus({ preventScroll: true });
+    const target =
+      settingsFocus === "voice" ? voiceRef : settingsFocus === "changelog" ? changelogRef : null;
+    if (!target) return;
+    target.current?.scrollIntoView({ block: "start" });
+    target.current?.focus({ preventScroll: true });
     useViewStore.getState().clearSettingsFocus();
   }, [settingsFocus]);
 
@@ -53,6 +57,9 @@ export function SettingsView() {
           <ProviderCard />
         </div>
         <SettingsSection />
+        <div ref={changelogRef} tabIndex={-1} className="outline-none">
+          <ChangelogSection />
+        </div>
       </div>
     </div>
   );

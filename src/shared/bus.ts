@@ -1,3 +1,4 @@
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
 import { emit, emitTo, listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
@@ -79,6 +80,11 @@ export function sendEngineCmd(cmd: EngineCmd): Promise<void> {
 }
 
 /* ---------- commands: webviews → rust ---------- */
+
+/** Version compiled into the running binary (tauri.conf.json) — can't drift. */
+export function getAppVersion(): Promise<string> {
+  return getVersion();
+}
 
 export function getSettings(): Promise<SettingsPayload> {
   return invoke("get_settings");

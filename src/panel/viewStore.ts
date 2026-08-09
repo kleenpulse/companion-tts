@@ -2,7 +2,7 @@ import { create } from "zustand";
 
 export type PanelView = "main" | "settings";
 /** One-shot scroll target inside the settings view, consumed after scrolling. */
-export type SettingsFocus = "voice" | null;
+export type SettingsFocus = "voice" | "changelog" | null;
 
 interface ViewState {
   view: PanelView;

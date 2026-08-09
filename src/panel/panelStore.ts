@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import {
+  getAppVersion,
   getSettings,
   listSessions,
   onEngineState,
@@ -30,6 +31,7 @@ interface PanelState {
   backfill: FeedItem[];
   backfillFor: string | null;
   watcherStatus: string;
+  appVersion: string;
   init: () => Promise<void>;
   saveSettings: (patch: Partial<Settings>) => Promise<void>;
   refreshProviders: () => Promise<void>;
@@ -46,17 +48,24 @@ export const usePanelStore = create<PanelState>((set, get) => ({
   backfill: [],
   backfillFor: null,
   watcherStatus: "starting",
+  appVersion: "",
 
   async init() {
     if (booted) return;
     booted = true;
 
-    const [payload, sessions, providers] = await Promise.all([
+    const [payload, sessions, providers, appVersion] = await Promise.all([
       getSettings(),
       listSessions(),
       providerStatus(),
+      getAppVersion().catch(() => ""),
     ]);
-    set({ settings: payload.settings, envKeys: payload.envKeys, sessions, providers });
+    set({ settings: payload.settings, envKeys: payload.envKeys, sessions, providers, appVersion });
+
+    // First-ever run: seed silently so What's New only fires on real upgrades.
+    if (appVersion && payload.settings.lastSeenVersion === "") {
+      void get().saveSettings({ lastSeenVersion: appVersion });
+    }
 
     await onSettingsUpdated((p) => set({ settings: p.settings, envKeys: p.envKeys }));
     await onSessionsUpdated((s) => set({ sessions: s }));

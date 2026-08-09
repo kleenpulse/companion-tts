@@ -32,6 +32,8 @@ export interface Settings {
   /** Feed reveals the spoken row character-by-character, synced to playback. */
   typewriter: boolean;
   theme: Theme;
+  /** Last version whose What's New was acknowledged; "" = never seeded. */
+  lastSeenVersion: string;
   /** Floating dial scale (0.75–3.0) — window and dial resize together. */
   fabScale: number;
   hiddenSessions: string[];

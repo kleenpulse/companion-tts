@@ -24,7 +24,9 @@ export function InlineFab() {
     ).length ?? 0;
   const style = settings?.visualizerStyle ?? "strands";
   const vizOn = settings?.visualizer ?? true;
-  const glyphState = mode === "paused" || mode === "muted" || mode === "error";
+  // Paused deliberately absent: the transport button already says it, and the
+  // frozen ribbons make the state obvious — the overlay was pure cosmetics.
+  const glyphState = mode === "muted" || mode === "error";
 
   // Visualizer off: stay a compact status dial, not a lens.
   if (!vizOn) {
@@ -81,9 +83,7 @@ export function InlineFab() {
           animate={{ opacity: 1 }}
           className="absolute inset-0 flex items-center justify-center rounded-full bg-bench-950/60"
         >
-          {mode === "paused" ? (
-            <Pause size={22} className="text-ink-dim" strokeWidth={1.75} />
-          ) : mode === "muted" ? (
+          {mode === "muted" ? (
             <VolumeX size={22} className="text-ink-mute" strokeWidth={1.75} />
           ) : (
             <AlertTriangle size={20} className="text-danger" strokeWidth={1.75} />
