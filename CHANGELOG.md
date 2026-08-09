@@ -10,6 +10,8 @@ commits, and tags.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-08-09
+
 ### Added
 
 - Version tracker: app version in the panel footer, a one-time What's New card
