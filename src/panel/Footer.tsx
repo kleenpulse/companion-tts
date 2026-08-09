@@ -5,6 +5,7 @@ import { useViewStore } from "./viewStore";
 export function Footer() {
   const { settings, watcherStatus, engineState, appVersion } = usePanelStore();
   const openSettings = useViewStore((s) => s.openSettings);
+  const openChangelog = useViewStore((s) => s.openChangelog);
   const chars = settings?.monthly.chars ?? 0;
 
   const dot =
@@ -48,7 +49,16 @@ export function Footer() {
         {compactChars(chars)} chars
         <span className="hidden min-[430px]:inline"> · {costEstimate(chars)} mo</span>
         {appVersion && (
-          <span className="hidden min-[480px]:inline"> · v{appVersion}</span>
+          <span className="hidden min-[480px]:inline">
+            {" · "}
+            <button
+              onClick={openChangelog}
+              title="View changelog"
+              className="transition-colors duration-200 hover:text-ink"
+            >
+              v{appVersion}
+            </button>
+          </span>
         )}
       </span>
     </footer>

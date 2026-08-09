@@ -57,12 +57,10 @@ export function Fab() {
 
   const speaking = mode === "speaking";
   // Strands mode: the lens IS the fab — full-bleed glass, no dial chrome.
+  // Paused deliberately keeps the lens: frozen ribbons say it, and the
+  // transport already shows the state — no glyph takeover needed.
   const lensActive =
-    vizStyle === "strands" &&
-    vizOn &&
-    mode !== "paused" &&
-    mode !== "muted" &&
-    mode !== "error";
+    vizStyle === "strands" && vizOn && mode !== "muted" && mode !== "error";
 
   return (
     <div className="flex h-screen w-screen items-center justify-center">
