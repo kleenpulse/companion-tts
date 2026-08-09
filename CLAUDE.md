@@ -19,6 +19,10 @@ wheels, MSVC includes for bindgen) and bundles `resources/espeak-ng-data`
 - `cargo test` in `src-tauri/` — tailer/parser fixtures
 - `node scripts/fake-session.mjs --interval 1500` — emit a fake session to narrate
   (flags: `--split-writes`, `--truncate-at N`, `--sessions 2`, `--loop`)
+- `npm run bump patch|minor|major` — cut a release: refuses dirty tree / empty
+  `[Unreleased]`, syncs package.json + tauri.conf.json + Cargo.toml + Cargo.lock,
+  cuts CHANGELOG.md (bundled into the panel via `?raw` — the What's New card and
+  settings changelog read it), commits `chore(release): vX.Y.Z`, tags. Never pushes.
 - API keys: settings UI, or env `ELEVEN_LABS` / `MISTRAL_API_KEY`
 
 ## Architecture
