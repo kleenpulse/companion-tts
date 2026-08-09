@@ -1,0 +1,6 @@
+{
+  // espeak-rs-sys clones sonic/espeak-ng (with .git) into target/ during
+  // builds — stop VS Code from mounting them as repositories. The workspace
+  // root repo is always detected regardless of this setting.
+  "git.autoRepositoryDetection": false
+}
