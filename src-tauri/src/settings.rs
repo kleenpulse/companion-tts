@@ -201,8 +201,21 @@ pub fn load(app: &AppHandle) -> Settings {
         Ok(raw) => serde_json::from_str(raw.trim_start_matches('\u{feff}')).unwrap_or_default(),
         Err(_) => Settings::default(),
     };
-    ensure_local_providers(&mut settings.provider_order);
+    sanitize(&mut settings);
     settings
+}
+
+/// Every invariant a Settings value must satisfy, enforced at the seam:
+/// applied on load and on every set_settings, so no consumer downstream
+/// (window sizing, the frontend CSS transform) meets an out-of-range value.
+pub fn sanitize(settings: &mut Settings) {
+    ensure_local_providers(&mut settings.provider_order);
+    // The UI range is L1..L10 = 0.75..=3.0 (format.ts fabLevelToScale).
+    // f64::clamp panics on NaN — guard first.
+    if !settings.fab_scale.is_finite() {
+        settings.fab_scale = 1.0;
+    }
+    settings.fab_scale = settings.fab_scale.clamp(0.75, 3.0);
 }
 
 /// Migration: installs predating the local providers gain them without their
@@ -448,6 +461,34 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_clamps_fab_scale_to_ui_range() {
+        let mut s = Settings::default();
+        s.fab_scale = 12.0;
+        sanitize(&mut s);
+        assert_eq!(s.fab_scale, 3.0);
+
+        s.fab_scale = 0.1;
+        sanitize(&mut s);
+        assert_eq!(s.fab_scale, 0.75);
+
+        s.fab_scale = 1.5;
+        sanitize(&mut s);
+        assert_eq!(s.fab_scale, 1.5);
+    }
+
+    #[test]
+    fn sanitize_survives_non_finite_fab_scale() {
+        let mut s = Settings::default();
+        s.fab_scale = f64::NAN;
+        sanitize(&mut s);
+        assert_eq!(s.fab_scale, 1.0);
+
+        s.fab_scale = f64::INFINITY;
+        sanitize(&mut s);
+        assert_eq!(s.fab_scale, 1.0);
+    }
+
+    #[test]
     fn migration_slots_piper_above_windows() {
         let mut order = vec!["mistral".to_string(), "windows".to_string(), "elevenlabs".to_string()];
         ensure_local_providers(&mut order);
@@ -510,8 +551,9 @@ pub fn set_settings(app: AppHandle, mut settings: Settings) -> Result<SettingsPa
         }
     }
 
-    // A stale frontend echo must never drop the keyless fallbacks.
-    ensure_local_providers(&mut settings.provider_order);
+    // A stale frontend echo must never drop the keyless fallbacks or smuggle
+    // an out-of-range fab scale to disk.
+    sanitize(&mut settings);
 
     let state = app.state::<SettingsState>();
     {
