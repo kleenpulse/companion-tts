@@ -10,6 +10,12 @@ commits, and tags.
 
 ## [Unreleased]
 
+### Fixed
+
+- Piper voices now play at the same loudness as the cloud providers: raw
+  synthesis output is peak-normalized before encoding, and previously cached
+  quiet Piper audio re-synthesizes automatically.
+
 ## [0.3.0] - 2026-08-10
 
 ### Added

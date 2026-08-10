@@ -212,7 +212,9 @@ static PROVIDERS: [Provider; 4] = [
         kind: ProviderKind::Local,
         billed: false,
         eligible: |ctx| ctx.piper_voice_ready,
-        cache_inputs: |s| (String::new(), s.voices.piper.clone()),
+        // "peak095" tags the post-processing (peak normalization in
+        // piper_tts.rs) so pre-normalization cache entries miss.
+        cache_inputs: |s| ("peak095".to_string(), s.voices.piper.clone()),
     },
     Provider {
         id: "windows",
@@ -552,9 +554,11 @@ mod tests {
             (provider_by_id("mistral").unwrap().cache_inputs)(&s),
             ("voxtral-mini-tts-2603/mp3".to_string(), "voice-mi".to_string())
         );
+        // "peak095" deliberately broke from the pre-normalization "" — quiet
+        // cached WAVs must re-synthesize through the normalizer.
         assert_eq!(
             (provider_by_id("piper").unwrap().cache_inputs)(&s),
-            (String::new(), "en_GB-alba-medium".to_string())
+            ("peak095".to_string(), "en_GB-alba-medium".to_string())
         );
         assert_eq!(
             (provider_by_id("windows").unwrap().cache_inputs)(&s),

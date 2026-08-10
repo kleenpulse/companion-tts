@@ -88,9 +88,10 @@ fn synth_thread(rx: mpsc::Receiver<SynthReq>) {
                 loaded = Some((req.voice_id.clone(), model));
             }
             let (_, piper) = loaded.as_mut().expect("just loaded");
-            let (samples, sample_rate) = piper
+            let (mut samples, sample_rate) = piper
                 .create(&req.text, false, None, None, None, None)
                 .map_err(|e| format!("synthesize: {e}"))?;
+            normalize_peak(&mut samples);
             Ok(encode_wav_mono16(&samples, sample_rate))
         })();
         // Receiver gone = caller timed out / app shutting down; nothing to do.
@@ -120,6 +121,25 @@ pub fn synthesize(app: &AppHandle, voice_id: &str, text: &str) -> Result<Vec<u8>
     })
     .map_err(|_| "piper thread gone".to_string())?;
     reply_rx.recv().map_err(|_| "piper thread died".to_string())?
+}
+
+/// Peak level the normalizer targets. Cloud providers ship loudness-normalized
+/// audio; raw Piper output peaks well below full-scale and sounds quiet next
+/// to them. Bump `synth.rs`'s piper cache_inputs tag if this ever changes.
+const NORMALIZE_PEAK: f32 = 0.95;
+
+/// Scale samples so the loudest one sits at `NORMALIZE_PEAK` — both directions,
+/// so a hot clip is tamed instead of clamp-distorted. Near-silence is left
+/// alone rather than amplified into noise.
+fn normalize_peak(samples: &mut [f32]) {
+    let peak = samples.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+    if peak < 1e-4 {
+        return;
+    }
+    let scale = NORMALIZE_PEAK / peak;
+    for s in samples.iter_mut() {
+        *s *= scale;
+    }
 }
 
 /// f32 samples → 16-bit PCM mono WAV (44-byte RIFF header).
@@ -277,6 +297,26 @@ mod tests {
         assert_eq!(u32::from_le_bytes(wav[24..28].try_into().unwrap()), 22050);
         // full-scale clamp
         assert_eq!(i16::from_le_bytes(wav[50..52].try_into().unwrap()), 32767);
+    }
+
+    #[test]
+    fn normalize_boosts_quiet_and_tames_hot() {
+        // Quiet clip (typical raw piper output) → peak lands on target.
+        let mut quiet = vec![0.1, -0.3, 0.2];
+        normalize_peak(&mut quiet);
+        assert!((quiet[1].abs() - NORMALIZE_PEAK).abs() < 1e-6);
+        assert!((quiet[0] - 0.1 * (NORMALIZE_PEAK / 0.3)).abs() < 1e-6);
+
+        // Hot clip → scaled down below clamp territory, not distorted.
+        let mut hot = vec![1.4, -0.7];
+        normalize_peak(&mut hot);
+        assert!((hot[0] - NORMALIZE_PEAK).abs() < 1e-6);
+
+        // Near-silence → untouched (no noise-floor amplification).
+        let mut silent = vec![0.00001, -0.00002];
+        let before = silent.clone();
+        normalize_peak(&mut silent);
+        assert_eq!(silent, before);
     }
 
     /// Real inference — needs en_GB-alba-medium downloaded into app-data.
