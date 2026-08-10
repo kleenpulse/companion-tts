@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { bootHarness, type EngineHarness } from "./testkit";
+import { bootHarness, defaultTestSettings, type EngineHarness } from "./testkit";
 
 /**
  * Behaviour tests for the Engine, driven headlessly through the EngineIO seam.
@@ -99,6 +99,23 @@ describe("mute", () => {
     h.text("A", "audible again");
     await h.settle();
     expect(h.spokenTexts().length).toBeGreaterThan(0);
+  });
+});
+
+describe("voice-switch announcement", () => {
+  it("speaks the provider flip even before any session is followed", async () => {
+    h = await bootHarness();
+
+    h.io.push.settingsUpdated({
+      settings: defaultTestSettings({
+        providerOrder: ["mistral", "elevenlabs", "piper", "windows"],
+      }),
+      envKeys: { elevenlabs: false, mistral: false },
+    });
+    await h.settle();
+
+    expect(h.followed()).toBeUndefined();
+    expect(h.spokenTexts()).toContain("voice switched to mistral.");
   });
 });
 

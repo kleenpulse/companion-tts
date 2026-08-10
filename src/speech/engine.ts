@@ -427,11 +427,13 @@ export class Engine {
   }
 
   private enqueueBlurb(phrase: string): void {
-    if (!this.followedSessionId) return;
+    // No follow required: the "voice switched" heads-up can arrive before any
+    // session is followed (Rust auto-promote during attention/test speech).
+    // Tool blurbs still only originate from followed-session events.
     this.queue.enqueue({
       id: `blurb:${Date.now()}:${Math.random().toString(36).slice(2, 6)}`,
       kind: "blurb",
-      sessionId: this.followedSessionId,
+      sessionId: this.followedSessionId ?? "system",
       text: `${phrase}.`,
       displayText: phrase,
       status: "queued",
