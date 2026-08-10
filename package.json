@@ -2,6 +2,23 @@
   "name": "companion-tts",
   "private": true,
   "version": "0.2.0",
+  "description": "A floating desktop companion that speaks Claude Code's output aloud",
+  "license": "GPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kleenpulse/companion-tts.git"
+  },
+  "homepage": "https://github.com/kleenpulse/companion-tts",
+  "bugs": "https://github.com/kleenpulse/companion-tts/issues",
+  "keywords": [
+    "claude-code",
+    "tts",
+    "text-to-speech",
+    "tauri",
+    "elevenlabs",
+    "piper-tts",
+    "desktop-app"
+  ],
   "type": "module",
   "scripts": {
     "dev": "vite",

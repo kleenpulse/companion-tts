@@ -1,0 +1,42 @@
+name: Bug report
+description: Something broke or sounds wrong
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: App version
+      description: Shown in the panel footer (e.g. 0.2.0)
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Active TTS provider when it happened
+      options:
+        - ElevenLabs
+        - Mistral Voxtral
+        - Piper (offline neural)
+        - Windows on-device
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what did it do instead?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Start a Claude Code session…
+        2. …
+  - type: textarea
+    id: context
+    attributes:
+      label: Environment
+      description: Windows version, and anything unusual (multiple sessions, custom hooks, VMs…)

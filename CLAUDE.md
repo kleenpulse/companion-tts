@@ -8,8 +8,9 @@ ort + espeak-ng; voices downloaded to app-data `piper\` from rhasspy/piper-voice
 eligible only with a voice installed; inference on one dedicated hot thread) and
 Windows on-device (WinRT `local_tts.rs`, always works). Settings migration keeps
 `provider_order` ending …piper→windows; locals excluded from monthly chars.
-Piper build needs `src-tauri/.cargo/config.toml` env pins (libclang + cmake pip
-wheels, MSVC includes for bindgen) and bundles `resources/espeak-ng-data`
+Piper build needs `src-tauri/.cargo/config.toml` env pins (gitignored —
+copy from `config.toml.example`; libclang + cmake pip wheels, MSVC includes
+for bindgen) and bundles `resources/espeak-ng-data`
 (espeak-ng is GPL-3 — copyleft applies if the app is ever distributed).
 
 ## Commands

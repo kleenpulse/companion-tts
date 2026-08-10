@@ -1,0 +1,24 @@
+# Machine-specific build environment for the Piper neural TTS provider.
+#
+# Copy this file to `config.toml` (same directory) and fix the paths for your
+# machine. The real `config.toml` is gitignored because every path below is
+# machine-specific. Without it, `piper-rs` → `espeak-rs-sys` fails to build;
+# everything else in the app compiles fine.
+#
+# What each pin is for:
+#  - LIBCLANG_PATH: espeak-rs runs bindgen at build time, which needs libclang.
+#    The pip `libclang` wheel is the lightest source (`pip install libclang`) —
+#    no full LLVM install required. Point at the wheel's `clang/native` dir.
+#  - BINDGEN_EXTRA_CLANG_ARGS: bindgen's clang doesn't inherit MSVC's header
+#    search the way the cc crate does — hand it the MSVC + Windows SDK system
+#    includes explicitly. Match the version numbers to what's installed under
+#    your Visual Studio Build Tools and Windows Kits.
+#  - CMAKE / CMAKE_GENERATOR: espeak-ng's C build (espeak-rs-sys) goes through
+#    cmake (`pip install cmake` works), and the generator must match your
+#    installed Build Tools edition — the default guess is wrong.
+
+[env]
+LIBCLANG_PATH = "C:\\Users\\YOU\\AppData\\Roaming\\Python\\Python3XX\\site-packages\\clang\\native"
+BINDGEN_EXTRA_CLANG_ARGS = "-isystem \"C:\\Program Files (x86)\\Microsoft Visual Studio\\2022\\BuildTools\\VC\\Tools\\MSVC\\<MSVC_VERSION>\\include\" -isystem \"C:\\Program Files (x86)\\Windows Kits\\10\\Include\\<SDK_VERSION>\\ucrt\" -isystem \"C:\\Program Files (x86)\\Windows Kits\\10\\Include\\<SDK_VERSION>\\um\" -isystem \"C:\\Program Files (x86)\\Windows Kits\\10\\Include\\<SDK_VERSION>\\shared\""
+CMAKE = "C:\\Users\\YOU\\AppData\\Roaming\\Python\\Python3XX\\Scripts\\cmake.exe"
+CMAKE_GENERATOR = "Visual Studio 17 2022"

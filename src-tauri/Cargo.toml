@@ -3,6 +3,8 @@ name = "companion-tts"
 version = "0.2.0"
 description = "Speaks Claude Code's output aloud from a floating companion"
 authors = ["skyep"]
+license = "GPL-3.0-only"
+repository = "https://github.com/kleenpulse/companion-tts"
 edition = "2021"
 
 [lib]

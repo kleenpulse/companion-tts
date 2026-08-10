@@ -15,6 +15,16 @@ dist-ssr
 # Local agent state
 .claude/settings.local.json
 
+# Local launch playbook — never ships
+docs/LAUNCH.md
+
+# Machine-specific build env (copy from config.toml.example)
+src-tauri/.cargo/config.toml
+
+# Env files — keys belong in the settings UI or your shell, never in git
+.env
+.env.*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

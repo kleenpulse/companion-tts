@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  web:
+    name: vitest
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  rust:
+    name: cargo test
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      # espeak-rs-sys builds espeak-ng (cmake) and runs bindgen (libclang).
+      # The local dev flow pins these in the gitignored .cargo/config.toml;
+      # on the runner we use the preinstalled LLVM + MSVC dev environment.
+      # msvc-dev-cmd exports INCLUDE, which bindgen's clang honors on Windows.
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Point bindgen at the runner's LLVM
+        run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
+      - run: cargo test

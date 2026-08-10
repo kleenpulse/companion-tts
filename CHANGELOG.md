@@ -10,6 +10,11 @@ commits, and tags.
 
 ## [Unreleased]
 
+### Added
+
+- Open-source release: GPL-3.0 license, third-party attributions, contributor
+  docs, GitHub CI, and a release pipeline that builds the installer on tag push.
+
 ## [0.2.0] - 2026-08-09
 
 ### Added

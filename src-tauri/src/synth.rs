@@ -16,7 +16,7 @@ const AUTO_SWITCH_AFTER: u32 = 3;
 
 pub struct SynthState {
     /// 401/403 = key is wrong; retrying burns nothing but never succeeds.
-    /// Cleared only by a settings change or restart (ported from ellum-ai_v2).
+    /// Cleared only by a settings change or restart.
     pub permanently_failed: Mutex<HashSet<String>>,
     /// Consecutive transient failures per provider — feeds the auto-switcher.
     pub consecutive_failures: Mutex<HashMap<String, u32>>,

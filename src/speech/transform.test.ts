@@ -78,7 +78,7 @@ describe("inline", () => {
   });
 
   it("file paths shrink to basenames", () => {
-    expect(one("Edited D:\\Vxrcel\\shadow-garden\\components\\shell\\PillTabs.tsx today.")).toBe(
+    expect(one("Edited D:\\projects\\my-app\\components\\shell\\PillTabs.tsx today.")).toBe(
       "Edited PillTabs.tsx today."
     );
     expect(one("Check src/components/shell/TopBar.tsx please.")).toBe(
