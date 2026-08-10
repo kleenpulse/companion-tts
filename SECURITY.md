@@ -4,7 +4,7 @@
 
 Please use GitHub's private vulnerability reporting:
 **[Report a vulnerability](https://github.com/kleenpulse/companion-tts/security/advisories/new)** —
-or email `ellumainc@gmail.com` if you prefer.
+or email `skyeparagon@gmail.com` if you prefer.
 
 Please do not open public issues for security reports.
 
