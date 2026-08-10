@@ -5,6 +5,7 @@
 [![Release](https://img.shields.io/github/v/release/kleenpulse/companion-tts)](https://github.com/kleenpulse/companion-tts/releases)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 ![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078d4)
+[![Support: Buy me a coffee](https://img.shields.io/badge/support-buy%20me%20a%20coffee-FFDD00)](https://buymeacoffee.com/Vxrcel)
 
 ![Companion TTS narrating a Claude Code session](docs/screenshot.png)
 
