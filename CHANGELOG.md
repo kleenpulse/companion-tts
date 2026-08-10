@@ -10,6 +10,8 @@ commits, and tags.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-10
+
 ### Added
 
 - Double-click a transcript row to speak it again — jumps the queue. The
