@@ -11,16 +11,24 @@ export interface PlayerLike {
   stop(): void;
 }
 
+export interface QueueLimits {
+  maxInflight: number;
+  prefetchDepth: number;
+}
+
 export interface QueueDeps {
   synth(text: string, u: Utterance): Promise<ArrayBuffer>;
   player: PlayerLike;
   onChange(): void;
   createUrl?(buf: ArrayBuffer): string;
   revokeUrl?(url: string): void;
+  /** Read per scheduling pass — lets the owner widen the pipeline when the
+   * active provider has no API concurrency limit (local TTS). */
+  limits?(): QueueLimits;
 }
 
-const PREFETCH_DEPTH = 2;
-const MAX_INFLIGHT = 2; // ElevenLabs free-tier concurrency limit
+/** Conservative default: ElevenLabs free tier allows 2 concurrent requests. */
+const DEFAULT_LIMITS: QueueLimits = { maxInflight: 2, prefetchDepth: 2 };
 const MAX_QUEUE_CHARS = 2500;
 const DONE_KEEP = 50;
 
@@ -74,12 +82,13 @@ export class UtteranceQueue {
     this.tryPlayHead();
 
     // Prefetch ahead of the playhead.
+    const { maxInflight, prefetchDepth } = this.deps.limits?.() ?? DEFAULT_LIMITS;
     const ahead = this.items.filter(
       (u) => u.status === "synthesizing" || (u.status === "ready" && u !== this.nowPlaying)
     ).length;
-    let budget = PREFETCH_DEPTH - ahead;
+    let budget = prefetchDepth - ahead;
     for (const u of this.items) {
-      if (budget <= 0 || this.inflight >= MAX_INFLIGHT) break;
+      if (budget <= 0 || this.inflight >= maxInflight) break;
       if (u.status !== "queued") continue;
       if (u.kind === "chime") {
         u.status = "ready";

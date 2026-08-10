@@ -146,6 +146,13 @@ export class Engine {
       onChange: () => this.scheduleBroadcast(),
       createUrl: deps.media?.createUrl,
       revokeUrl: deps.media?.revokeUrl,
+      // Local providers have no API concurrency limit (piper serializes on
+      // its own hot thread; extra inflight just queues there harmlessly) —
+      // widen the pipeline. Unknown/cloud stays at the free-tier-safe 2.
+      limits: () =>
+        this.activeProvider === "piper" || this.activeProvider === "windows"
+          ? { maxInflight: 4, prefetchDepth: 4 }
+          : { maxInflight: 2, prefetchDepth: 2 },
     });
     this.collapser = new BlurbCollapser((phrase) => this.enqueueBlurb(phrase));
   }

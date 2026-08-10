@@ -119,6 +119,18 @@ describe("voice-switch announcement", () => {
   });
 });
 
+describe("provider-aware queue limits", () => {
+  it("prefetches deeper once a local provider is serving", async () => {
+    h = await bootHarness();
+
+    h.io.push.synthUsed("windows");
+    // Five one-chunk prose turns land back to back; synth calls fire
+    // synchronously inside enqueue, before any promise resolves.
+    for (let i = 0; i < 5; i++) h.text("A", `sentence number ${i} here`);
+    expect(h.io.synthCalls.length).toBe(4); // cloud default would stop at 2
+  });
+});
+
 describe("attention grace window", () => {
   it("dissolves a permission alert when the session moves on within 2.5s", async () => {
     h = await bootHarness();

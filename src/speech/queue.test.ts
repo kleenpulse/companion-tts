@@ -71,6 +71,23 @@ describe("UtteranceQueue", () => {
     });
   });
 
+  it("widens the pipeline when deps.limits says so", () => {
+    const wide = new UtteranceQueue({
+      synth: (text) => {
+        synthCalls.push(text);
+        return new Promise<ArrayBuffer>((res) => resolvers.push(res));
+      },
+      player,
+      onChange: vi.fn(),
+      createUrl: () => "url:w",
+      revokeUrl: vi.fn(),
+      limits: () => ({ maxInflight: 4, prefetchDepth: 4 }),
+    });
+    for (const id of ["a", "b", "c", "d", "e"]) wide.enqueue(utterance(id));
+    // Default caps would stop at 2; the local-provider limits pull 4 inflight.
+    expect(synthCalls).toEqual(["text a", "text b", "text c", "text d"]);
+  });
+
   it("discards enqueues while muted — the single mute policy", () => {
     queue.setMuted(true);
     queue.enqueue(utterance("a"));
