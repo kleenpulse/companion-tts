@@ -15,8 +15,9 @@ wheels, MSVC includes for bindgen) and bundles `resources/espeak-ng-data`
 ## Commands
 
 - `npm run tauri dev` — run the app (needs Rust + MSVC Build Tools)
-- `npm test` — vitest (transform/blurbs/queue)
-- `cargo test` in `src-tauri/` — tailer/parser fixtures
+- `npm test` — vitest (transform/blurbs/queue + engine behaviour via
+  `speech/testkit.ts` — the headless harness that boots a real Engine)
+- `cargo test` in `src-tauri/` — tailer/parser fixtures, provider walk, tail core
 - `node scripts/fake-session.mjs --interval 1500` — emit a fake session to narrate
   (flags: `--split-writes`, `--truncate-at N`, `--sessions 2`, `--loop`)
 - `npm run bump patch|minor|major` — cut a release: refuses dirty tree / empty
@@ -30,7 +31,9 @@ wheels, MSVC includes for bindgen) and bundles `resources/espeak-ng-data`
 Two static webview windows (`fab` 64×64 always-on-top + `panel` 380×660).
 **Rust classifies, TS phrases**: `watcher.rs`→`tailer.rs`→`parser.rs` emit compact
 `session-event`s (noise never crosses IPC); the fab window's `speech/engine.ts`
-transforms, queues, and plays. The panel is a remote control over tauri events
+transforms, queues, and plays (constructed at `fab/engineInstance.ts` — the
+composition root; engine.ts itself is node-clean and must never import
+bus/theme/fabStore/Player as values). The panel is a remote control over tauri events
 (`engine-state` / `engine-cmd`). Synthesis is a Rust command (`synth.rs`, reqwest)
 so keys stay native-side and CORS never applies. Synthesized bytes persist in
 app-data `audio-cache\` (`audio_cache.rs`; keyed sha256 of provider|model|voice|text,
