@@ -123,6 +123,14 @@ export class Player {
     this.el.load();
   }
 
+  /** Played fraction of the current track; null when there is nothing to measure. */
+  progress(): number | null {
+    const el = this.el;
+    return Number.isFinite(el.duration) && el.duration > 0
+      ? Math.min(1, el.currentTime / el.duration)
+      : null;
+  }
+
   setVolume(v: number): void {
     this.volume = Math.min(1, Math.max(0, v));
     if (this.gain) this.gain.gain.value = this.volume;

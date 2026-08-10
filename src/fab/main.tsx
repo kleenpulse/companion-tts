@@ -6,7 +6,7 @@ import "@fontsource/geist-sans/400.css";
 import "@fontsource/geist-sans/500.css";
 import "@fontsource/geist-mono/400.css";
 import "../styles/globals.css";
-import { engine } from "../speech/engine";
+import { engine } from "./engineInstance";
 import { Fab } from "./Fab";
 
 // The engine lives ONLY in this always-alive window.

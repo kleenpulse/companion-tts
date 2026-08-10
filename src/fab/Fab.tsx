@@ -3,7 +3,7 @@ import { AlertTriangle, AudioLines, Pause, VolumeX } from "lucide-react";
 import { motion } from "motion/react";
 import { useRef } from "react";
 import { togglePanel } from "../shared/bus";
-import { engine } from "../speech/engine";
+import { engine } from "./engineInstance";
 import { StrandsVisualizer } from "../viz/StrandsVisualizer";
 import { useFabStore } from "./fabStore";
 import { WaveRing } from "./WaveRing";

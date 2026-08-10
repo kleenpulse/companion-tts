@@ -1,33 +1,21 @@
-import {
-  broadcastEngineState,
-  emitVizEnv,
-  getSettings,
-  listSessions,
-  onAttention,
-  onEngineCmd,
-  onSessionEvent,
-  onSynthUsed,
-  onSessionsUpdated,
-  onSettingsUpdated,
-  onWatcherStatus,
-  reportAudioUnlocked,
-  synthesize,
-} from "../shared/bus";
 import type {
+  AttentionEvent,
+  EngineCmd,
   EngineMode,
   EngineState,
   ProviderId,
   SessionEvent,
   SessionInfo,
   Settings,
+  SettingsPayload,
+  Theme,
+  VizEnv,
+  VizStyle,
 } from "../shared/types";
-import { useFabStore } from "../fab/fabStore";
-import { applyTheme } from "../shared/theme";
 import { attentionText, isPermissionMessage, toolAttentionText } from "./attention";
 import { BlurbCollapser } from "./blurbs";
 import { synthHealthOf } from "./health";
-import { Player } from "./player";
-import { UtteranceQueue } from "./queue";
+import { UtteranceQueue, type PlayerLike } from "./queue";
 import { fixMojibake, transformForSpeech } from "./transform";
 import { shortTitle } from "../shared/format";
 
@@ -38,14 +26,93 @@ const CHIME_MEMORY = 64;
 const ATTENTION_ARM_MS = 2500;
 const ATTENTION_RATE_LIMIT_MS = 20_000;
 
+export type Unsubscribe = () => void;
+
+/**
+ * Everything the engine says to / hears from the outside world. Deliberately
+ * name-and-shape congruent with the matching exports of shared/bus.ts, so in
+ * production `import * as bus` satisfies it with zero adapter code — and any
+ * bus signature drift becomes a compile error in engineInstance.ts.
+ * Subscriptions may return the Unsubscribe directly or in a Promise (tauri's
+ * listen() is async; test fakes are sync).
+ */
+export interface EngineIO {
+  getSettings(): Promise<SettingsPayload>;
+  listSessions(): Promise<SessionInfo[]>;
+  /** scope names the audio-cache bucket; the engine decides the value. */
+  synthesize(text: string, scope: string): Promise<ArrayBuffer>;
+
+  broadcastEngineState(state: EngineState): Promise<void> | void;
+  emitVizEnv(env: VizEnv): Promise<void> | void;
+  reportAudioUnlocked(unlocked: boolean): Promise<void> | void;
+
+  onSettingsUpdated(cb: (p: SettingsPayload) => void): Promise<Unsubscribe> | Unsubscribe;
+  onSessionsUpdated(cb: (s: SessionInfo[]) => void): Promise<Unsubscribe> | Unsubscribe;
+  onWatcherStatus(cb: (s: string) => void): Promise<Unsubscribe> | Unsubscribe;
+  onSessionEvent(cb: (ev: SessionEvent) => void): Promise<Unsubscribe> | Unsubscribe;
+  onAttention(cb: (ev: AttentionEvent) => void): Promise<Unsubscribe> | Unsubscribe;
+  onSynthUsed(cb: (provider: ProviderId) => void): Promise<Unsubscribe> | Unsubscribe;
+  onEngineCmd(cb: (c: EngineCmd) => void): Promise<Unsubscribe> | Unsubscribe;
+}
+
+/** Structural stand-in for AnalyserNode — the two members the viz loop and
+ * WaveRing consume. A real AnalyserNode satisfies it; a fake is five lines. */
+export interface SpectrumSource {
+  readonly frequencyBinCount: number;
+  getByteFrequencyData(out: Uint8Array<ArrayBuffer>): void;
+}
+
+/** Superset of the queue's PlayerLike — everything the engine itself needs.
+ * The production Player satisfies it structurally. */
+export interface EnginePlayerPort extends PlayerLike {
+  probeAutoplay(): Promise<boolean>;
+  pause(): void;
+  resume(): void;
+  setVolume(v: number): void;
+  setRate(r: number): void;
+  readonly analyser: SpectrumSource | null;
+  /** 0..1 played fraction of the current track, or null when unknowable
+   * (no track, non-finite duration, headless). Feeds VizEnv.frac. */
+  progress(): number | null;
+}
+
+/** The patch the engine mirrors into the fab window's local store. */
+export interface FabMirror {
+  mode: EngineMode;
+  queueCount: number;
+  audioUnlocked: boolean;
+  vizStyle: VizStyle;
+  fabScale: number;
+  vizOn: boolean;
+  composing: boolean;
+}
+
+export interface EngineDeps {
+  io: EngineIO;
+  player: EnginePlayerPort;
+  /** Side-effect sink: html[data-theme] flip. Test: no-op. */
+  applyTheme(t: Theme): void;
+  /** Side-effect sink: fab-window-local state. Test: recorder. */
+  mirror(patch: FabMirror): void;
+  /** Blob-URL indirection for the queue; required headless (no
+   * URL.createObjectURL in node). */
+  media?: {
+    createUrl(buf: ArrayBuffer): string;
+    revokeUrl(url: string): void;
+  };
+}
+
 /**
  * The product's brain. Lives ONLY in the fab window (always-alive webview).
  * Routes tailer events through transform/blurbs into the queue, owns follow
  * logic and mute/pause, and broadcasts its state for the panel and tray.
+ *
+ * Construction happens at the composition root (src/fab/engineInstance.ts in
+ * production, testkit.ts in vitest) — this module has no import-time side
+ * effects and imports only pure, node-safe modules.
  */
-class Engine {
+export class Engine {
   private settings: Settings | null = null;
-  private player = new Player();
   private queue: UtteranceQueue;
   private collapser: BlurbCollapser;
 
@@ -63,51 +130,84 @@ class Engine {
   private broadcastTimer: ReturnType<typeof setTimeout> | null = null;
   private vizTimer: ReturnType<typeof setInterval> | null = null;
   private vizBins: Uint8Array<ArrayBuffer> | null = null;
+  private unsubs: Unsubscribe[] = [];
 
-  constructor() {
+  constructor(private deps: EngineDeps) {
     this.queue = new UtteranceQueue({
       // Blurbs/attention are app vocabulary (repeats across every session) →
       // the shared cache bucket; prose is session content → session-scoped,
       // purged when the session is hidden.
       synth: (text, u) =>
-        synthesize(text, u.kind === "blurb" || u.kind === "attention" ? "_shared" : u.sessionId),
-      player: this.player,
+        deps.io.synthesize(
+          text,
+          u.kind === "blurb" || u.kind === "attention" ? "_shared" : u.sessionId
+        ),
+      player: deps.player,
       onChange: () => this.scheduleBroadcast(),
+      createUrl: deps.media?.createUrl,
+      revokeUrl: deps.media?.revokeUrl,
     });
     this.collapser = new BlurbCollapser((phrase) => this.enqueueBlurb(phrase));
   }
 
   async boot(): Promise<void> {
-    const payload = await getSettings();
+    const io = this.deps.io;
+    const payload = await io.getSettings();
     this.applySettings(payload.settings);
 
-    for (const s of await listSessions()) this.sessions.set(s.sessionId, s);
+    for (const s of await io.listSessions()) this.sessions.set(s.sessionId, s);
 
-    await onSettingsUpdated((p) => this.applySettings(p.settings));
-    await onSessionsUpdated((list) => {
-      for (const s of list) this.sessions.set(s.sessionId, s);
-    });
-    await onWatcherStatus((s) => {
-      this.watcherStatus = s;
-      this.scheduleBroadcast();
-    });
-    await onSessionEvent((ev) => this.route(ev));
-    await onAttention((ev) => this.routeAttention(ev.sessionId, ev.message));
-    await onSynthUsed((provider) => {
-      if (this.activeProvider !== provider) {
-        this.activeProvider = provider;
+    this.unsubs.push(await io.onSettingsUpdated((p) => this.applySettings(p.settings)));
+    this.unsubs.push(
+      await io.onSessionsUpdated((list) => {
+        for (const s of list) this.sessions.set(s.sessionId, s);
+      })
+    );
+    this.unsubs.push(
+      await io.onWatcherStatus((s) => {
+        this.watcherStatus = s;
         this.scheduleBroadcast();
-      }
-    });
-    await onEngineCmd((cmd) => this.handleCmd(cmd));
+      })
+    );
+    this.unsubs.push(await io.onSessionEvent((ev) => this.route(ev)));
+    this.unsubs.push(await io.onAttention((ev) => this.routeAttention(ev.sessionId, ev.message)));
+    this.unsubs.push(
+      await io.onSynthUsed((provider) => {
+        if (this.activeProvider !== provider) {
+          this.activeProvider = provider;
+          this.scheduleBroadcast();
+        }
+      })
+    );
+    this.unsubs.push(await io.onEngineCmd((cmd) => this.handleCmd(cmd)));
 
-    this.audioUnlocked = await this.player.probeAutoplay();
-    await reportAudioUnlocked(this.audioUnlocked);
+    this.audioUnlocked = await this.deps.player.probeAutoplay();
+    await io.reportAudioUnlocked(this.audioUnlocked);
     if (this.audioUnlocked) {
       // The boot beep: proves the autoplay flag before anything else exists (M1 exit).
-      this.player.chime(() => {});
+      this.deps.player.chime(() => {});
     }
     this.broadcastNow();
+  }
+
+  /** Unsubscribe everything, clear every timer, stop playback. Idempotent.
+   * Prod never calls this (the fab window lives for the process lifetime);
+   * it exists so tests don't leak timers across specs. */
+  dispose(): void {
+    for (const off of this.unsubs) off();
+    this.unsubs = [];
+    if (this.broadcastTimer) {
+      clearTimeout(this.broadcastTimer);
+      this.broadcastTimer = null;
+    }
+    if (this.vizTimer) {
+      clearInterval(this.vizTimer);
+      this.vizTimer = null;
+    }
+    for (const t of this.pendingAttention.values()) clearTimeout(t);
+    this.pendingAttention.clear();
+    this.collapser.reset();
+    this.deps.player.stop();
   }
 
   private applySettings(s: Settings): void {
@@ -120,9 +220,9 @@ class Engine {
       this.enqueueBlurb(`voice switched to ${spoken}`);
     }
     this.settings = s;
-    applyTheme(s.theme);
-    this.player.setVolume(s.volume);
-    this.player.setRate(s.rate);
+    this.deps.applyTheme(s.theme);
+    this.deps.player.setVolume(s.volume);
+    this.deps.player.setRate(s.rate);
     if (s.follow.mode === "pinned" && s.follow.pinnedSessionId) {
       if (this.followedSessionId !== s.follow.pinnedSessionId) {
         this.switchFollow(s.follow.pinnedSessionId, false);
@@ -338,15 +438,15 @@ class Engine {
 
   /* ---------- commands ---------- */
 
-  private handleCmd(cmd: { cmd: string; v?: number; sessionId?: string; text?: string }): void {
+  private handleCmd(cmd: EngineCmd): void {
     switch (cmd.cmd) {
       case "pause":
         this.queue.setPaused(true);
-        this.player.pause();
+        this.deps.player.pause();
         break;
       case "resume":
         this.queue.setPaused(false);
-        this.player.resume();
+        this.deps.player.resume();
         this.queue.schedule();
         break;
       case "pause-resume":
@@ -363,10 +463,10 @@ class Engine {
         this.queue.setMuted(!this.queue.muted);
         break;
       case "set-volume":
-        if (typeof cmd.v === "number") this.player.setVolume(cmd.v);
+        if (typeof cmd.v === "number") this.deps.player.setVolume(cmd.v);
         break;
       case "set-rate":
-        if (typeof cmd.v === "number") this.player.setRate(cmd.v);
+        if (typeof cmd.v === "number") this.deps.player.setRate(cmd.v);
         break;
       case "pin":
         if (cmd.sessionId) this.switchFollow(cmd.sessionId, false);
@@ -430,7 +530,7 @@ class Engine {
 
   private broadcastNow(): void {
     const state = this.buildState();
-    useFabStore.getState().set({
+    this.deps.mirror({
       mode: state.mode,
       queueCount: state.queue.filter(
         (u) => u.status === "queued" || u.status === "synthesizing" || u.status === "ready"
@@ -442,14 +542,14 @@ class Engine {
       composing: state.queue.some((u) => u.status === "synthesizing"),
     });
     this.syncVizStream(state.mode === "speaking");
-    void broadcastEngineState(state);
+    void this.deps.io.broadcastEngineState(state);
   }
 
   /** Stream the audio envelope (RMS + 12 coarse bins) to the visualizers while speaking. */
   private syncVizStream(speaking: boolean): void {
     if (speaking && !this.vizTimer) {
       this.vizTimer = setInterval(() => {
-        const analyser = this.player.analyser;
+        const analyser = this.deps.player.analyser;
         if (!analyser) return;
         if (!this.vizBins || this.vizBins.length !== analyser.frequencyBinCount) {
           this.vizBins = new Uint8Array(analyser.frequencyBinCount);
@@ -471,13 +571,9 @@ class Engine {
         // Chimes are oscillators — the <audio> element holds a stale src then,
         // so they get no utteranceId and the panel renders them plain.
         const np = this.queue.nowPlaying;
-        const el = this.player.el;
         const utt = np && np.kind !== "chime" ? np : null;
-        const frac =
-          utt && Number.isFinite(el.duration) && el.duration > 0
-            ? Math.min(1, el.currentTime / el.duration)
-            : 0;
-        void emitVizEnv({
+        const frac = utt ? this.deps.player.progress() ?? 0 : 0;
+        void this.deps.io.emitVizEnv({
           rms: Math.sqrt(sum / this.vizBins.length),
           bins,
           utteranceId: utt?.id,
@@ -487,13 +583,11 @@ class Engine {
     } else if (!speaking && this.vizTimer) {
       clearInterval(this.vizTimer);
       this.vizTimer = null;
-      void emitVizEnv({ rms: 0, bins: new Array(12).fill(0) });
+      void this.deps.io.emitVizEnv({ rms: 0, bins: new Array(12).fill(0) });
     }
   }
 
-  get analyser() {
-    return this.player.analyser;
+  get analyser(): SpectrumSource | null {
+    return this.deps.player.analyser;
   }
 }
-
-export const engine = new Engine();

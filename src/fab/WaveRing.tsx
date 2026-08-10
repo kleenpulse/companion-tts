@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import type { SpectrumSource } from "../speech/engine";
 
 /**
  * 24 radial bars breathing with real audio amplitude — the instrument needle
@@ -10,7 +11,7 @@ export function WaveRing({
   analyser,
   pixelScale = 1,
 }: {
-  analyser: AnalyserNode | null;
+  analyser: SpectrumSource | null;
   pixelScale?: number;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
