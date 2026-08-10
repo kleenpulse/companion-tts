@@ -405,6 +405,9 @@ export class Engine {
   }
 
   private rememberChime(msgId: string): void {
+    // Idempotent: the zero-chunk text path records the id and enqueueChime
+    // records it again — one slot per msgId, or the 64-entry ring halves.
+    if (this.chimedMsgIds.includes(msgId)) return;
     this.chimedMsgIds.push(msgId);
     if (this.chimedMsgIds.length > CHIME_MEMORY) this.chimedMsgIds.shift();
   }

@@ -39,6 +39,24 @@ describe("chime dedupe", () => {
     await h.settle();
     expect(h.state().queue.filter((u) => u.kind === "chime")).toHaveLength(1);
   });
+
+  it("keeps one ring slot per msgId — a zero-chunk turn must not halve the memory", async () => {
+    h = await bootHarness();
+
+    // m0 takes one slot.
+    h.turnEnd("A", "m0");
+    // A no-speech turn (no alphanumerics survive the transform): zero chunks,
+    // still ends the turn. Both the text path and enqueueChime record m1 —
+    // one slot, not two.
+    h.text("A", "...", { msgId: "m1", stopReason: "end_turn" });
+    // 62 more distinct turn ends fill the 64-slot ring exactly (m0 + m1 + 62).
+    for (let i = 1; i <= 62; i++) h.turnEnd("A", `d${i}`);
+
+    // If m1 had eaten two slots, m0 would be evicted and chime again here.
+    h.turnEnd("A", "m0");
+    await h.settle();
+    expect(h.state().queue.filter((u) => u.id === "chime:m0")).toHaveLength(1);
+  });
 });
 
 describe("follow hysteresis", () => {
