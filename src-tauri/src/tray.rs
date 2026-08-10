@@ -43,13 +43,7 @@ pub fn init(app: &App) -> tauri::Result<()> {
                 let _ = if enabled { manager.disable() } else { manager.enable() };
                 let _ = autostart_item.set_checked(!enabled);
             }
-            "quit" => {
-                // Flush the latest settings snapshot before dying.
-                let state = app.state::<crate::settings::SettingsState>();
-                let snapshot = state.0.lock().unwrap().clone();
-                crate::settings::save(app, &snapshot);
-                app.exit(0);
-            }
+            "quit" => crate::windows::quit(app),
             _ => {}
         })
         .build(app)?;

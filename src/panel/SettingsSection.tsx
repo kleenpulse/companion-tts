@@ -99,6 +99,17 @@ export function SettingsSection() {
           </label>
           <label className="flex items-center justify-between rounded-md px-0.5 py-0.5">
             <span className="font-display text-[10px] uppercase tracking-[0.15em] text-ink-mute">
+              Confirm before quitting
+            </span>
+            <input
+              type="checkbox"
+              checked={settings.confirmQuit}
+              onChange={(e) => void saveSettings({ confirmQuit: e.target.checked })}
+              className="h-3.5 w-3.5 accent-accent"
+            />
+          </label>
+          <label className="flex items-center justify-between rounded-md px-0.5 py-0.5">
+            <span className="font-display text-[10px] uppercase tracking-[0.15em] text-ink-mute">
               Voice visualizer
             </span>
             <input

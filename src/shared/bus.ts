@@ -165,6 +165,11 @@ export function togglePanel(): Promise<boolean> {
   return invoke("toggle_panel");
 }
 
+/** Flushes settings Rust-side, then exits the process — never resolves. */
+export function quitApp(): Promise<void> {
+  return invoke("quit_app");
+}
+
 export function reportAudioUnlocked(unlocked: boolean): Promise<void> {
   return invoke("report_audio_unlocked", { unlocked });
 }

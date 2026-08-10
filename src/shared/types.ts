@@ -46,6 +46,8 @@ export interface Settings {
   fabPosition?: { x: number; y: number } | null;
   panelBounds?: { x: number; y: number; width: number; height: number } | null;
   autostart: boolean;
+  /** Panel × asks before exiting the app. */
+  confirmQuit: boolean;
   shortcuts: { mute: string; pauseResume: string };
   monthly: {
     month: string;

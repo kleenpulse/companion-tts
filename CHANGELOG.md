@@ -20,6 +20,9 @@ commits, and tags.
 - Attention alerts now ring a distinct urgent triple ping the instant they
   fire — clearly different from the turn-complete chime — with the spoken
   alert following as before.
+- The panel × now quits the app behind a confirmation dialog (with an
+  "always ask" checkbox, also toggleable in settings); a new − button
+  collapses to the floating dial, which × used to do.
 
 ### Changed
 

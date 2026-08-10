@@ -1,12 +1,12 @@
-import { ArrowLeft, X } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { togglePanel } from "../shared/bus";
 import { ChangelogSection } from "./ChangelogSection";
 import { onHeaderPointerDown } from "./dragRegion";
 import { ProviderCard } from "./ProviderCard";
 import { SettingsSection } from "./SettingsSection";
 import { Toggles } from "./Toggles";
 import { useViewStore } from "./viewStore";
+import { WindowButtons } from "./WindowButtons";
 
 export function SettingsView() {
   const closeSettings = useViewStore((s) => s.closeSettings);
@@ -36,13 +36,7 @@ export function SettingsView() {
         <span className="flex-1 font-display text-[10px] uppercase tracking-[0.15em] text-ink-mute">
           Settings
         </span>
-        <button
-          aria-label="Close panel"
-          onClick={() => void togglePanel()}
-          className="rounded-md p-1 text-ink-mute transition-colors duration-200 hover:bg-raised hover:text-ink"
-        >
-          <X size={14} strokeWidth={2} />
-        </button>
+        <WindowButtons />
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">

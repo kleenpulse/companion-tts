@@ -41,6 +41,7 @@ export function defaultTestSettings(over?: Partial<Settings>): Settings {
     fabPosition: null,
     panelBounds: null,
     autostart: false,
+    confirmQuit: true,
     shortcuts: { mute: "", pauseResume: "" },
     monthly: { month: "2026-01", chars: 0 },
     ...over,

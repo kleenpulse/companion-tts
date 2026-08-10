@@ -47,6 +47,21 @@ fn point_on_some_monitor(app: &AppHandle, x: i32, y: i32) -> bool {
     })
 }
 
+/// The one way to die: flush the settings snapshot (geometry saves are
+/// throttled to 1s — an unflushed drag would be lost), then exit. Shared by
+/// the tray's Quit item and the panel's × command.
+pub fn quit(app: &AppHandle) {
+    let state = app.state::<crate::settings::SettingsState>();
+    let snapshot = state.0.lock().unwrap().clone();
+    crate::settings::save(app, &snapshot);
+    app.exit(0);
+}
+
+#[tauri::command]
+pub fn quit_app(app: AppHandle) {
+    quit(&app);
+}
+
 /// Show the panel where the user parked it, else anchored beside the FAB.
 #[tauri::command]
 pub fn toggle_panel(app: AppHandle) -> Result<bool, String> {

@@ -5,6 +5,7 @@ import { applyTheme } from "../shared/theme";
 import { ChangelogView } from "./ChangelogView";
 import { Footer } from "./Footer";
 import { MainView } from "./MainView";
+import { QuitConfirm } from "./QuitConfirm";
 import { usePanelStore } from "./panelStore";
 import { SettingsView } from "./SettingsView";
 import { useViewStore } from "./viewStore";
@@ -32,6 +33,12 @@ export function PanelShell() {
     localStorage.removeItem("companion.ui.sectionsH");
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      // Dialog outranks views: Escape dismisses the quit confirm, never the panel.
+      const { quitConfirmOpen, setQuitConfirm } = usePanelStore.getState();
+      if (quitConfirmOpen) {
+        setQuitConfirm(false);
+        return;
+      }
       const { view: current, closeSettings, closeChangelog } = useViewStore.getState();
       if (current === "changelog") closeChangelog();
       else if (current === "settings") closeSettings();
@@ -42,7 +49,8 @@ export function PanelShell() {
   }, [init]);
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden rounded-lg border border-hairline bg-panel">
+    <div className="relative flex h-screen w-screen flex-col overflow-hidden rounded-lg border border-hairline bg-panel">
+      <QuitConfirm />
       <div className="relative min-h-0 flex-1">
         <AnimatePresence mode="wait" initial={false}>
           {view === "main" ? (

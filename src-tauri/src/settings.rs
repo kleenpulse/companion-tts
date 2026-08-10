@@ -154,6 +154,7 @@ pub struct Settings {
     pub fab_position: Option<FabPos>,
     pub panel_bounds: Option<PanelBounds>,
     pub autostart: bool,
+    pub confirm_quit: bool, // panel × asks before exiting
     pub shortcuts: Shortcuts,
     pub monthly: Monthly,
 }
@@ -184,6 +185,7 @@ impl Default for Settings {
             fab_position: None,
             panel_bounds: None,
             autostart: false,
+            confirm_quit: true,
             shortcuts: Shortcuts::default(),
             monthly: Monthly::default(),
         }
@@ -585,6 +587,13 @@ mod tests {
         let raw = r#"{"voices":{"elevenlabs":"x","mistral":"y"}}"#;
         let s: Settings = serde_json::from_str(raw).unwrap();
         assert!(!s.typewriter);
+    }
+
+    #[test]
+    fn old_settings_json_lacking_confirm_quit_defaults_true() {
+        let raw = r#"{"voices":{"elevenlabs":"x","mistral":"y"}}"#;
+        let s: Settings = serde_json::from_str(raw).unwrap();
+        assert!(s.confirm_quit);
     }
 
     #[test]

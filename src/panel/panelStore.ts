@@ -36,6 +36,10 @@ interface PanelState {
   backfillFor: string | null;
   watcherStatus: string;
   appVersion: string;
+  /** Quit confirmation dialog — store-level: three headers trigger it and
+   * the PanelShell escape chain must see it. */
+  quitConfirmOpen: boolean;
+  setQuitConfirm: (open: boolean) => void;
   init: () => Promise<void>;
   saveSettings: (patch: Partial<Settings>) => Promise<void>;
   refreshProviders: () => Promise<void>;
@@ -53,6 +57,8 @@ export const usePanelStore = create<PanelState>((set, get) => ({
   backfillFor: null,
   watcherStatus: "starting",
   appVersion: "",
+  quitConfirmOpen: false,
+  setQuitConfirm: (open) => set({ quitConfirmOpen: open }),
 
   async init() {
     if (booted) return;

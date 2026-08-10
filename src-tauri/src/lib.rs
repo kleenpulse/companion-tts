@@ -95,6 +95,7 @@ pub fn run() {
             piper_tts::download_piper_voice,
             piper_tts::remove_piper_voice,
             windows::toggle_panel,
+            windows::quit_app,
             windows::report_audio_unlocked,
             windows::preview_fab_scale,
             windows::end_fab_preview,

@@ -1,11 +1,11 @@
-import { Moon, Settings, Sun, X } from "lucide-react";
-import { togglePanel } from "../shared/bus";
+import { Moon, Settings, Sun } from "lucide-react";
 import { projectName, shortTitle } from "../shared/format";
 import { resolveTheme } from "../shared/theme";
 import { onHeaderPointerDown } from "./dragRegion";
 import { usePanelStore } from "./panelStore";
 import { PillTabs } from "./PillTabs";
 import { useViewStore } from "./viewStore";
+import { WindowButtons } from "./WindowButtons";
 
 export function Header() {
 	const { engineState, sessions, settings, saveSettings } = usePanelStore();
@@ -67,13 +67,7 @@ export function Header() {
 				>
 					<Settings size={14} strokeWidth={2} />
 				</button>
-				<button
-					aria-label="Close panel"
-					onClick={() => void togglePanel()}
-					className="rounded-md p-1 text-ink-mute transition-colors duration-200 hover:bg-raised hover:text-ink"
-				>
-					<X size={14} strokeWidth={2} />
-				</button>
+				<WindowButtons />
 			</div>
 			<div className="mt-1.5 truncate text-[13px] font-medium text-ink">
 				{followed ? (

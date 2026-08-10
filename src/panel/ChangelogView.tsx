@@ -1,8 +1,8 @@
-import { ArrowLeft, X } from "lucide-react";
-import { togglePanel } from "../shared/bus";
+import { ArrowLeft } from "lucide-react";
 import { releases } from "./changelogData";
 import { onHeaderPointerDown } from "./dragRegion";
 import { useViewStore } from "./viewStore";
+import { WindowButtons } from "./WindowButtons";
 
 /** Full release history from the bundled CHANGELOG.md — read-only browser. */
 export function ChangelogView() {
@@ -24,13 +24,7 @@ export function ChangelogView() {
         <span className="flex-1 font-display text-[10px] uppercase tracking-[0.15em] text-ink-mute">
           Changelog
         </span>
-        <button
-          aria-label="Close panel"
-          onClick={() => void togglePanel()}
-          className="rounded-md p-1 text-ink-mute transition-colors duration-200 hover:bg-raised hover:text-ink"
-        >
-          <X size={14} strokeWidth={2} />
-        </button>
+        <WindowButtons />
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
