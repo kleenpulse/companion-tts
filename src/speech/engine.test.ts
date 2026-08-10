@@ -84,6 +84,24 @@ describe("follow hysteresis", () => {
   });
 });
 
+describe("mute", () => {
+  it("discards speech while muted; speaks again after unmute", async () => {
+    h = await bootHarness();
+
+    h.cmd({ cmd: "toggle-mute" });
+    h.text("A", "muted words");
+    h.attention("A", "Claude is waiting for your input");
+    await h.advance(3000);
+    expect(h.state().queue).toHaveLength(0);
+    expect(h.spokenTexts()).toEqual([]);
+
+    h.cmd({ cmd: "toggle-mute" });
+    h.text("A", "audible again");
+    await h.settle();
+    expect(h.spokenTexts().length).toBeGreaterThan(0);
+  });
+});
+
 describe("attention grace window", () => {
   it("dissolves a permission alert when the session moves on within 2.5s", async () => {
     h = await bootHarness();

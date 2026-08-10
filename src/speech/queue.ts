@@ -57,6 +57,9 @@ export class UtteranceQueue {
   }
 
   enqueue(u: Utterance): void {
+    // THE mute policy: muted = incoming speech is discarded, playback stays
+    // stopped (setMuted ran stopAll). Callers don't pre-check.
+    if (this.muted) return;
     this.items.push(u);
     // Backpressure: blurbs are droppable garnish; prose is the verbatim contract.
     if (this.queuedChars > MAX_QUEUE_CHARS) {

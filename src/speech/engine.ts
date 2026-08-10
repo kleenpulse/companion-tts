@@ -295,7 +295,7 @@ export class Engine {
     switch (ev.kind) {
       case "text": {
         this.collapser.flushAll(); // order: pending blurbs precede this prose
-        if (!this.settings.features.prose || this.queue.muted) break;
+        if (!this.settings.features.prose) break;
         const chunks = transformForSpeech(ev.text);
         const wantChime =
           this.settings.features.chime && ev.stopReason === "end_turn";
@@ -319,19 +319,19 @@ export class Engine {
         break;
       }
       case "tool": {
-        if (!this.settings.features.blurbs || this.queue.muted) break;
+        if (!this.settings.features.blurbs) break;
         this.collapser.push(ev.toolName, ev.input);
         break;
       }
       case "turnEnd": {
-        if (!this.settings.features.chime || this.queue.muted) break;
+        if (!this.settings.features.chime) break;
         if (this.chimedMsgIds.includes(ev.msgId)) break; // thinking+text both carry end_turn
         this.collapser.flushAll();
         this.enqueueChime(ev.sessionId, ev.msgId);
         break;
       }
       case "apiError": {
-        if (!this.settings.features.errors || this.queue.muted) break;
+        if (!this.settings.features.errors) break;
         const last = this.lastErrorSpokenAt.get(ev.sessionId) ?? 0;
         if (Date.now() - last < ERROR_RATE_LIMIT_MS) break;
         this.lastErrorSpokenAt.set(ev.sessionId, Date.now());
@@ -377,7 +377,7 @@ export class Engine {
   }
 
   private speakAttention(sessionId: string, text: string): void {
-    if (!this.settings?.features.attention || this.queue.muted) return;
+    if (!this.settings?.features.attention) return;
     const key = sessionId || "unknown";
     const last = this.lastAttentionAt.get(key) ?? 0;
     if (Date.now() - last < ATTENTION_RATE_LIMIT_MS) return;
@@ -427,7 +427,7 @@ export class Engine {
   }
 
   private enqueueBlurb(phrase: string): void {
-    if (!this.followedSessionId || this.queue.muted) return;
+    if (!this.followedSessionId) return;
     this.queue.enqueue({
       id: `blurb:${Date.now()}:${Math.random().toString(36).slice(2, 6)}`,
       kind: "blurb",

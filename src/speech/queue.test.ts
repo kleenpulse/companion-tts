@@ -71,6 +71,20 @@ describe("UtteranceQueue", () => {
     });
   });
 
+  it("discards enqueues while muted — the single mute policy", () => {
+    queue.setMuted(true);
+    queue.enqueue(utterance("a"));
+    queue.enqueue(utterance("chime1", { kind: "chime", text: "" }));
+    expect(queue.items).toHaveLength(0);
+    expect(synthCalls).toEqual([]);
+
+    // Unmuting does not resurrect anything — the speech was never queued.
+    queue.setMuted(false);
+    expect(queue.items).toHaveLength(0);
+    queue.enqueue(utterance("b"));
+    expect(synthCalls).toEqual(["text b"]);
+  });
+
   it("prefetches ahead while playing — pipeline, not serial", async () => {
     queue.enqueue(utterance("a"));
     queue.enqueue(utterance("b"));
