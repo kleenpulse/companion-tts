@@ -119,6 +119,20 @@ describe("voice-switch announcement", () => {
   });
 });
 
+describe("provider boost", () => {
+  it("speeds and lifts mistral, resets when another provider takes over", async () => {
+    h = await bootHarness();
+    expect(h.player.providerBoost).toEqual({ rate: 1, gain: 1 });
+
+    h.io.push.synthUsed("mistral");
+    expect(h.player.providerBoost.rate).toBeCloseTo(1.1);
+    expect(h.player.providerBoost.gain).toBeCloseTo(1.3);
+
+    h.io.push.synthUsed("piper");
+    expect(h.player.providerBoost).toEqual({ rate: 1, gain: 1 });
+  });
+});
+
 describe("provider-aware queue limits", () => {
   it("prefetches deeper once a local provider is serving", async () => {
     h = await bootHarness();
@@ -143,6 +157,8 @@ describe("attention grace window", () => {
 
     expect(h.state().queue.some((u) => u.kind === "attention")).toBe(false);
     expect(h.spokenTexts().some((t) => t.includes("approval"))).toBe(false);
+    // A dissolved alert never rings the attention cue either.
+    expect(h.player.attentionPings).toBe(0);
   });
 
   it("speaks after 2.5s of silence, into the _shared cache scope", async () => {
@@ -156,5 +172,31 @@ describe("attention grace window", () => {
     const call = h.io.synthCalls.find((c) => c.text.includes("approval"));
     expect(call?.text).toBe("Claude needs your approval to run a command.");
     expect(call?.scope).toBe("_shared");
+    // The distinct triple ping fired the instant the alert committed.
+    expect(h.player.attentionPings).toBe(1);
+  });
+
+  it("rate limit covers the ping — a second alert within 20s stays silent", async () => {
+    h = await bootHarness();
+
+    h.attention("A", "Claude needs your permission to use Bash");
+    await h.advance(2500);
+    expect(h.player.attentionPings).toBe(1);
+
+    h.attention("A", "Claude needs your permission to use Edit");
+    await h.advance(2500);
+    expect(h.player.attentionPings).toBe(1);
+  });
+
+  it("muted: no ping, no spoken alert", async () => {
+    h = await bootHarness();
+
+    h.cmd({ cmd: "toggle-mute" });
+    h.attention("A", "Claude needs your permission to use Bash");
+    await h.advance(2500);
+    await h.settle();
+
+    expect(h.player.attentionPings).toBe(0);
+    expect(h.state().queue.some((u) => u.kind === "attention")).toBe(false);
   });
 });

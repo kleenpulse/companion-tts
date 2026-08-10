@@ -6,7 +6,7 @@ import {
   previewFabScale,
 } from "../shared/bus";
 import { fabLevelToScale, fabScaleToLevel } from "../shared/format";
-import type { CloudProviderId } from "../shared/types";
+import type { CloudProviderId, ReplayMode } from "../shared/types";
 import { usePanelStore } from "./panelStore";
 import { PillTabs } from "./PillTabs";
 
@@ -118,6 +118,21 @@ export function SettingsSection() {
               onChange={(e) => void saveSettings({ typewriter: e.target.checked })}
               className="h-3.5 w-3.5 accent-accent"
             />
+          </label>
+          <label className="block rounded-md px-0.5 py-0.5">
+            <span className="font-display text-[10px] uppercase tracking-[0.15em] text-ink-mute">
+              Replay on double-click
+            </span>
+            <select
+              value={settings.replayMode}
+              onChange={(e) => void saveSettings({ replayMode: e.target.value as ReplayMode })}
+              className="mt-0.5 w-full rounded-md border border-hairline bg-surface px-1.5 py-1 font-mono text-[10px] text-ink-dim outline-none transition-colors duration-200 focus:border-accent/40"
+            >
+              <option value="next">Speak next</option>
+              <option value="interrupt">Interrupt current</option>
+              <option value="interrupt-clear">Interrupt + clear queue</option>
+              <option value="off">Off</option>
+            </select>
           </label>
           <div className="flex items-center justify-between rounded-md px-0.5 py-0.5">
             <span className="font-display text-[10px] uppercase tracking-[0.15em] text-ink-mute">

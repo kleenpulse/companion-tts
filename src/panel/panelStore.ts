@@ -22,13 +22,17 @@ import type {
 import { blurbFor } from "../speech/blurbs";
 import { fixMojibake } from "../speech/transform";
 
+/** Backfill rows keep the FULL text for double-click replay — displayText is
+ * truncated to 160 chars and the engine has no record of these rows. */
+export type BackfillRow = FeedItem & { replayText: string };
+
 interface PanelState {
   engineState: EngineState | null;
   sessions: SessionInfo[];
   settings: Settings | null;
   envKeys: EnvKeys | null;
   providers: ProviderStatus[];
-  backfill: FeedItem[];
+  backfill: BackfillRow[];
   backfillFor: string | null;
   watcherStatus: string;
   appVersion: string;
@@ -99,7 +103,7 @@ async function loadBackfill(
   set: (p: Partial<PanelState>) => void
 ): Promise<void> {
   const events = await tailBackfill(sessionId, 30);
-  const items: FeedItem[] = [];
+  const items: BackfillRow[] = [];
   for (const ev of events) {
     if (ev.kind === "text") {
       const t = fixMojibake(ev.text).replace(/\s+/g, " ").trim();
@@ -109,6 +113,7 @@ async function loadBackfill(
           kind: "prose",
           status: "done",
           displayText: t.length > 160 ? `${t.slice(0, 160)}…` : t,
+          replayText: t,
           sessionId,
         });
       }
@@ -120,6 +125,7 @@ async function loadBackfill(
           kind: "blurb",
           status: "done",
           displayText: b.phrase,
+          replayText: b.phrase,
           sessionId,
         });
       }

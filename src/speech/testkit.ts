@@ -33,6 +33,7 @@ export function defaultTestSettings(over?: Partial<Settings>): Settings {
     visualizer: true,
     visualizerStyle: "strands",
     typewriter: true,
+    replayMode: "next",
     theme: "dark",
     lastSeenVersion: "",
     fabScale: 1,
@@ -132,6 +133,8 @@ class FakeIO implements EngineIO {
 class FakePlayer implements EnginePlayerPort {
   playingUrl: string | null = null;
   chimeCalls = 0;
+  attentionPings = 0;
+  providerBoost = { rate: 1, gain: 1 };
   private pendingEnd: (() => void) | null = null;
 
   playUrl(url: string, onEnded: () => void, _onError: (e: unknown) => void): void {
@@ -153,6 +156,12 @@ class FakePlayer implements EnginePlayerPort {
   resume(): void {}
   setVolume(_v: number): void {}
   setRate(_r: number): void {}
+  setProviderBoost(b: { rate: number; gain: number }): void {
+    this.providerBoost = b;
+  }
+  attentionPing(): void {
+    this.attentionPings += 1;
+  }
   probeAutoplay(): Promise<boolean> {
     return Promise.resolve(true);
   }

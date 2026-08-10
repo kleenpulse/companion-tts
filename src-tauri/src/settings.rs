@@ -146,6 +146,7 @@ pub struct Settings {
     pub visualizer: bool,
     pub visualizer_style: String, // "waves" | "strands"
     pub typewriter: bool,         // feed reveals spoken row in sync with playback
+    pub replay_mode: String,      // "next" | "interrupt" | "interrupt-clear" | "off"
     pub theme: String,            // "dark" | "light" | "system"
     pub last_seen_version: String, // last What's New acknowledged; "" = never seeded
     pub fab_scale: f64,           // 0.75..=3.0, dial + window scale together
@@ -175,6 +176,7 @@ impl Default for Settings {
             visualizer: true,
             visualizer_style: "strands".into(),
             typewriter: false,
+            replay_mode: "next".into(),
             theme: "dark".into(),
             last_seen_version: String::new(),
             fab_scale: 1.0,
@@ -238,6 +240,12 @@ pub fn sanitize(settings: &mut Settings) {
         settings.fab_scale = 1.0;
     }
     settings.fab_scale = settings.fab_scale.clamp(0.75, 3.0);
+    if !matches!(
+        settings.replay_mode.as_str(),
+        "next" | "interrupt" | "interrupt-clear" | "off"
+    ) {
+        settings.replay_mode = "next".into();
+    }
 }
 
 /// Migration: installs predating the local providers gain them without their
@@ -577,6 +585,25 @@ mod tests {
         let raw = r#"{"voices":{"elevenlabs":"x","mistral":"y"}}"#;
         let s: Settings = serde_json::from_str(raw).unwrap();
         assert!(!s.typewriter);
+    }
+
+    #[test]
+    fn old_settings_json_lacking_replay_mode_defaults_next() {
+        let raw = r#"{"voices":{"elevenlabs":"x","mistral":"y"}}"#;
+        let s: Settings = serde_json::from_str(raw).unwrap();
+        assert_eq!(s.replay_mode, "next");
+    }
+
+    #[test]
+    fn sanitize_coerces_unknown_replay_mode_to_next() {
+        let mut s = Settings::default();
+        s.replay_mode = "yolo".into();
+        sanitize(&mut s);
+        assert_eq!(s.replay_mode, "next");
+
+        s.replay_mode = "interrupt-clear".into();
+        sanitize(&mut s);
+        assert_eq!(s.replay_mode, "interrupt-clear");
     }
 
     #[test]

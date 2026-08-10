@@ -10,11 +10,31 @@ commits, and tags.
 
 ## [Unreleased]
 
+### Added
+
+- Double-click a transcript row to speak it again — jumps the queue. The
+  behavior is configurable in settings (speak next / interrupt current /
+  interrupt + clear queue / off) and double-clicking while muted unmutes
+  first. Rows still waiting their turn are untouched.
+- Attention alerts now ring a distinct urgent triple ping the instant they
+  fire — clearly different from the turn-complete chime — with the spoken
+  alert following as before.
+
+### Changed
+
+- Groundwork for macOS/Linux ports: the code now compiles on all three
+  platforms (Windows-only voice gated behind the platform, CI proves the
+  cross-compile). Behavior on Windows is unchanged.
+
 ### Fixed
 
 - Piper voices now play at the same loudness as the cloud providers: raw
   synthesis output is peak-normalized before encoding, and previously cached
   quiet Piper audio re-synthesizes automatically.
+- Mistral (Voxtral) voices play at 1.1x by default to match the other
+  providers' pace — layered over your rate setting, which stays untouched.
+- Mistral voices also get a volume lift to match ElevenLabs' loudness —
+  the turn-complete chime is unaffected.
 
 ## [0.3.0] - 2026-08-10
 

@@ -206,6 +206,105 @@ describe("UtteranceQueue", () => {
     expect(synthCalls).toEqual([]);
     expect(player.chimes).toBe(1);
   });
+
+  describe("enqueuePriority", () => {
+    it("next while playing: lands after nowPlaying, plays before backlog", async () => {
+      queue.enqueue(utterance("a"));
+      queue.enqueue(utterance("b"));
+      resolvers[0](new ArrayBuffer(1));
+      resolvers[1](new ArrayBuffer(1));
+      await flush();
+      expect(queue.nowPlaying?.id).toBe("a");
+
+      queue.enqueuePriority([utterance("r")], "next");
+      expect(queue.items.map((u) => u.id)).toEqual(["a", "r", "b"]);
+
+      player.endCurrent();
+      await flush();
+      // r's synth resolved before it plays
+      resolvers[resolvers.length - 1](new ArrayBuffer(1));
+      await flush();
+      expect(queue.nowPlaying?.id).toBe("r");
+      expect(queue.items.find((u) => u.id === "b")?.status).not.toBe("skipped");
+    });
+
+    it("next while idle with backlog: inserted before the first pending item", () => {
+      queue.setPaused(true); // hold playback so the backlog stays pending
+      queue.enqueue(utterance("a"));
+      queue.enqueue(utterance("b"));
+      queue.enqueuePriority([utterance("r")], "next");
+      expect(queue.items.map((u) => u.id)).toEqual(["r", "a", "b"]);
+    });
+
+    it("interrupt: current becomes skipped, replay plays next, backlog intact", async () => {
+      queue.enqueue(utterance("a"));
+      queue.enqueue(utterance("b"));
+      resolvers[0](new ArrayBuffer(1));
+      resolvers[1](new ArrayBuffer(1));
+      await flush();
+      expect(queue.nowPlaying?.id).toBe("a");
+
+      queue.enqueuePriority([utterance("r")], "interrupt");
+      expect(queue.items.find((u) => u.id === "a")?.status).toBe("skipped");
+      resolvers[resolvers.length - 1](new ArrayBuffer(1));
+      await flush();
+      expect(queue.nowPlaying?.id).toBe("r");
+      expect(queue.items.find((u) => u.id === "b")?.status).not.toBe("skipped");
+    });
+
+    it("interrupt-clear: wipes the backlog, replay is the sole pending item", async () => {
+      queue.enqueue(utterance("a"));
+      queue.enqueue(utterance("b"));
+      queue.enqueue(utterance("c"));
+      resolvers[0](new ArrayBuffer(1));
+      await flush();
+      expect(queue.nowPlaying?.id).toBe("a");
+
+      queue.enqueuePriority([utterance("r")], "interrupt-clear");
+      for (const id of ["a", "b", "c"]) {
+        expect(queue.items.find((u) => u.id === id)?.status).toBe("skipped");
+      }
+      // The stopped items' in-flight synths still hold their slots; their late
+      // results are discarded, freeing the pipeline for r.
+      resolvers[1](new ArrayBuffer(1));
+      resolvers[2](new ArrayBuffer(1));
+      await flush();
+      expect(synthCalls).toContain("text r");
+      resolvers[resolvers.length - 1](new ArrayBuffer(1));
+      await flush();
+      expect(queue.nowPlaying?.id).toBe("r");
+    });
+
+    it("regression: priority head synthesizes even with the prefetch budget exhausted", async () => {
+      // Fill the depth-2 budget with ready backlog behind the playing item.
+      queue.enqueue(utterance("a"));
+      queue.enqueue(utterance("b"));
+      queue.enqueue(utterance("c"));
+      resolvers[0](new ArrayBuffer(1));
+      resolvers[1](new ArrayBuffer(1));
+      await flush();
+      resolvers[2](new ArrayBuffer(1));
+      await flush();
+      expect(queue.nowPlaying?.id).toBe("a");
+      // b and c are both ready → ahead=2, budget 0.
+
+      queue.enqueuePriority([utterance("r")], "interrupt");
+      // Without the head exemption, r never synthesizes and playback stalls forever.
+      expect(synthCalls).toContain("text r");
+      resolvers[resolvers.length - 1](new ArrayBuffer(1));
+      await flush();
+      expect(queue.nowPlaying?.id).toBe("r");
+    });
+
+    it("splices a multi-utterance replay contiguously in order", async () => {
+      queue.enqueue(utterance("a"));
+      resolvers[0](new ArrayBuffer(1));
+      await flush();
+      expect(queue.nowPlaying?.id).toBe("a");
+      queue.enqueuePriority([utterance("r1"), utterance("r2")], "next");
+      expect(queue.items.map((u) => u.id)).toEqual(["a", "r1", "r2"]);
+    });
+  });
 });
 
 describe("audioMime", () => {

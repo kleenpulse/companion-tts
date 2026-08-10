@@ -1,18 +1,29 @@
 /**
  * One persistent <audio> element wired through Web Audio:
- *   element → MediaElementSource → Gain (volume/mute) → Analyser → destination.
+ *   element → MediaElementSource → BoostGain (per-provider) → Gain (volume/mute)
+ *   → Analyser → destination.
  * The analyser drives the FAB's waveform ring. The chime is two oscillators
- * through the same gain, so volume and mute apply to everything.
+ * into the master gain directly, so volume and mute apply to everything but
+ * provider corrections never color the chime.
  */
+
+/** Per-provider playback corrections — layered over the user's settings,
+ * never persisted into them. */
+export interface ProviderBoost {
+  rate: number;
+  gain: number;
+}
 
 export class Player {
   readonly el: HTMLAudioElement;
   private ctx: AudioContext | null = null;
   private gain: GainNode | null = null;
+  private boostNode: GainNode | null = null;
   analyser: AnalyserNode | null = null;
 
   private volume = 0.9;
   private rate = 1.0;
+  private boost: ProviderBoost = { rate: 1, gain: 1 };
 
   constructor() {
     this.el = new Audio();
@@ -27,13 +38,16 @@ export class Player {
     }
     this.ctx = new AudioContext({ latencyHint: "interactive" });
     const src = this.ctx.createMediaElementSource(this.el);
+    this.boostNode = this.ctx.createGain();
+    this.boostNode.gain.value = this.boost.gain;
     this.gain = this.ctx.createGain();
     this.gain.gain.value = this.volume;
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 64;
     this.analyser.smoothingTimeConstant = 0.7;
     // Analyser MUST chain to destination or audio goes silent.
-    src.connect(this.gain);
+    src.connect(this.boostNode);
+    this.boostNode.connect(this.gain);
     this.gain.connect(this.analyser);
     this.analyser.connect(this.ctx.destination);
   }
@@ -70,7 +84,7 @@ export class Player {
       onError(new Error("audio element error"));
     };
     el.src = url;
-    el.playbackRate = this.rate;
+    el.playbackRate = this.effectiveRate();
     void el.play().catch((e) => onError(e));
   }
 
@@ -101,6 +115,31 @@ export class Player {
       osc.stop(t0 + at + 0.24);
     }
     setTimeout(onDone, 340);
+  }
+
+  /** Attention cue: three quick C6 pings, ~450ms — unmistakably different
+   * from the rising turn chime. Fire-and-forget: oscillators ring over any
+   * ongoing narration; no queue participation, nothing waits on it.
+   * Routed to the master gain, NOT the provider boostNode — corrections
+   * never color cues. */
+  attentionPing(): void {
+    this.ensureGraph();
+    if (!this.ctx || !this.gain) return;
+    const ctx = this.ctx;
+    const t0 = ctx.currentTime;
+    for (const at of [0, 0.15, 0.3]) {
+      const osc = ctx.createOscillator();
+      const env = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = 1046.5; // C6
+      env.gain.setValueAtTime(0.0001, t0 + at);
+      env.gain.exponentialRampToValueAtTime(0.35, t0 + at + 0.015);
+      env.gain.exponentialRampToValueAtTime(0.001, t0 + at + 0.12);
+      osc.connect(env);
+      env.connect(this.gain);
+      osc.start(t0 + at);
+      osc.stop(t0 + at + 0.14);
+    }
   }
 
   pause(): void {
@@ -138,6 +177,18 @@ export class Player {
 
   setRate(r: number): void {
     this.rate = Math.min(2, Math.max(0.5, r));
-    this.el.playbackRate = this.rate;
+    this.el.playbackRate = this.effectiveRate();
+  }
+
+  /** Engine-driven, from the active provider. Applies mid-track too. */
+  setProviderBoost(b: ProviderBoost): void {
+    this.boost = b;
+    this.el.playbackRate = this.effectiveRate();
+    if (this.boostNode) this.boostNode.gain.value = b.gain;
+  }
+
+  /** playbackRate must stay in the user-visible envelope even boosted. */
+  private effectiveRate(): number {
+    return Math.min(2, this.rate * this.boost.rate);
   }
 }

@@ -1,8 +1,8 @@
 import { AlertTriangle, Bell, BellRing, Wrench } from "lucide-react";
 import { useEffect, useRef } from "react";
-import { onPanelShown } from "../shared/bus";
+import { onPanelShown, sendEngineCmd } from "../shared/bus";
 import type { FeedItem } from "../shared/types";
-import { usePanelStore } from "./panelStore";
+import { usePanelStore, type BackfillRow } from "./panelStore";
 import { RevealText } from "./RevealText";
 
 function RowGlyph({ kind }: { kind: FeedItem["kind"] }) {
@@ -101,10 +101,35 @@ export function TranscriptFeed() {
     // reveal, which latches the row to full plain text.
     const typewrite =
       !!settings?.typewriter && playing && item.status === "playing" && item.kind !== "chime";
+    // Double-click replay: settled rows + all backfill; pending rows inert
+    // (replaying one would play it twice).
+    const settled =
+      item.status === "done" || item.status === "failed" || item.status === "skipped";
+    const replayable =
+      settings != null &&
+      settings.replayMode !== "off" &&
+      item.kind !== "chime" &&
+      (history || settled);
     return (
       <div
         key={item.id}
         data-playing={playing || undefined}
+        onDoubleClick={
+          replayable
+            ? () =>
+                // Closure values only — inside RevealText, e.target is a
+                // per-character span. Backfill rows send full replayText (the
+                // engine never saw them); live rows send their id, with
+                // displayText as the pruned-id fallback.
+                void sendEngineCmd({
+                  cmd: "replay",
+                  id: history ? undefined : item.id,
+                  text: history ? (item as BackfillRow).replayText : item.displayText,
+                  sessionId: item.sessionId,
+                })
+            : undefined
+        }
+        title={replayable ? "Double-click to speak again" : undefined}
         className={`flex gap-2 rounded-md px-2 py-1.5 text-[12px] leading-snug transition-colors duration-200 ${
           playing
             ? "border-l-2 border-accent bg-accent/10 text-ink"
@@ -115,7 +140,7 @@ export function TranscriptFeed() {
                 : pending
                   ? "text-ink-mute opacity-55"
                   : "text-ink-dim"
-        }`}
+        }${replayable ? " cursor-pointer hover:bg-bench-700/40" : ""}`}
       >
         <RowGlyph kind={item.kind} />
         <span className="min-w-0 flex-1 wrap-break-word">

@@ -9,6 +9,7 @@ import type {
   Settings,
   SettingsPayload,
   Theme,
+  Utterance,
   VizEnv,
   VizStyle,
 } from "../shared/types";
@@ -25,6 +26,13 @@ const CHIME_MEMORY = 64;
 /** Grace before speaking a permission alert — canceled if the session moves on. */
 const ATTENTION_ARM_MS = 2500;
 const ATTENTION_RATE_LIMIT_MS = 20_000;
+/** Per-provider playback corrections, layered over the user's settings.
+ * Voxtral runs slower AND quieter than ElevenLabs' loudness-normalized
+ * output — nudge both. Locals need nothing (Piper peak-normalizes in Rust). */
+const PROVIDER_BOOST: Partial<Record<ProviderId, { rate: number; gain: number }>> = {
+  mistral: { rate: 1.1, gain: 1.3 },
+};
+const NO_BOOST = { rate: 1, gain: 1 };
 
 export type Unsubscribe = () => void;
 
@@ -70,6 +78,10 @@ export interface EnginePlayerPort extends PlayerLike {
   resume(): void;
   setVolume(v: number): void;
   setRate(r: number): void;
+  /** Rate + gain corrections layered over user settings — see PROVIDER_BOOST. */
+  setProviderBoost(b: { rate: number; gain: number }): void;
+  /** Instant "Claude needs you" cue — rings over ongoing narration. */
+  attentionPing(): void;
   readonly analyser: SpectrumSource | null;
   /** 0..1 played fraction of the current track, or null when unknowable
    * (no track, non-finite duration, headless). Feeds VizEnv.frac. */
@@ -182,6 +194,7 @@ export class Engine {
       await io.onSynthUsed((provider) => {
         if (this.activeProvider !== provider) {
           this.activeProvider = provider;
+          this.deps.player.setProviderBoost(PROVIDER_BOOST[provider] ?? NO_BOOST);
           this.scheduleBroadcast();
         }
       })
@@ -390,6 +403,10 @@ export class Engine {
     if (Date.now() - last < ATTENTION_RATE_LIMIT_MS) return;
     this.lastAttentionAt.set(key, Date.now());
 
+    // Instant audible cue — the spoken alert follows in queue order. Muted =
+    // silent (the enqueue below would discard the speech too).
+    if (!this.queue.muted) this.deps.player.attentionPing();
+
     // Name the session when it isn't the one being narrated.
     let spoken = text;
     if (sessionId && sessionId !== this.followedSessionId) {
@@ -494,8 +511,46 @@ export class Engine {
           enqueuedAt: Date.now(),
         });
         break;
+      case "replay":
+        this.handleReplay(cmd);
+        break;
     }
     this.broadcastNow();
+  }
+
+  /** Double-click-a-row re-speak. Live rows resolve by id for full-fidelity
+   * text (already transformed); backfill rows and pruned ids fall back to
+   * cmd.text, which goes through transformForSpeech here. */
+  private handleReplay(cmd: { id?: string; text?: string; sessionId?: string }): void {
+    const mode = this.settings?.replayMode ?? "next";
+    if (mode === "off") return; // panel gates too — defense in depth
+    const src = cmd.id ? this.queue.items.find((u) => u.id === cmd.id) : undefined;
+    if (src) {
+      const settled =
+        src.status === "done" || src.status === "failed" || src.status === "skipped";
+      // Pending rows are inert — replaying one would play it twice.
+      if (!settled || src.kind === "chime") return;
+    }
+    const parts: Array<{ text: string; display: string }> = src?.text
+      ? [{ text: src.text, display: src.displayText }]
+      : transformForSpeech(cmd.text?.trim() ?? "").map((c) => ({ text: c, display: c }));
+    if (parts.length === 0) return; // pure code / empty — nothing speakable
+    const sessionId = src?.sessionId ?? cmd.sessionId ?? this.followedSessionId ?? "replay";
+    const stamp = Date.now();
+    const us: Utterance[] = parts.map((p, i) => ({
+      // Fresh ids — reusing the source row's id would collide React keys and
+      // nowPlayingId matching.
+      id: `replay:${stamp}:${i}:${Math.random().toString(36).slice(2, 6)}`,
+      kind: "prose", // backpressure only ever drops blurbs — replays are safe
+      sessionId,
+      text: p.text,
+      displayText: p.display,
+      status: "queued",
+      enqueuedAt: stamp,
+    }));
+    // Explicit user action overrides mute (pause is still respected).
+    if (this.queue.muted) this.queue.setMuted(false);
+    this.queue.enqueuePriority(us, mode);
   }
 
   /* ---------- state broadcast ---------- */

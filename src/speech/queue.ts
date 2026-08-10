@@ -77,6 +77,35 @@ export class UtteranceQueue {
     this.schedule();
   }
 
+  /**
+   * Priority insert for user-initiated replays — the ONE sanctioned exception
+   * to tail-order enqueue (the chime splice in finish() is its precedent).
+   * Array-taking: a multi-chunk replay must splice contiguously.
+   * No muted guard: the engine unmutes before calling (explicit user action).
+   */
+  enqueuePriority(us: Utterance[], mode: "next" | "interrupt" | "interrupt-clear"): void {
+    if (us.length === 0) return;
+    // Wipe FIRST so the insert isn't swept up by stopAll.
+    if (mode === "interrupt-clear") this.stopAll();
+    const pendingIdx = this.items.findIndex(
+      (u) =>
+        u.status === "queued" ||
+        u.status === "synthesizing" ||
+        u.status === "ready" ||
+        u.status === "playing"
+    );
+    // Playing: right after the current utterance. Idle with backlog: before
+    // the first pending item. Fully idle: tail (plays as soon as it's ready).
+    const idx = this.nowPlaying
+      ? this.items.indexOf(this.nowPlaying) + 1
+      : pendingIdx === -1
+        ? this.items.length
+        : pendingIdx;
+    this.items.splice(idx, 0, ...us);
+    if (mode === "interrupt") this.skip(); // settles nowPlaying + schedules
+    else this.schedule();
+  }
+
   schedule(): void {
     this.prune();
     this.tryPlayHead();
@@ -87,9 +116,16 @@ export class UtteranceQueue {
       (u) => u.status === "synthesizing" || (u.status === "ready" && u !== this.nowPlaying)
     ).length;
     let budget = prefetchDepth - ahead;
+    // The playhead is always synthesis-eligible: after a priority insert the
+    // head can be `queued` behind already-`ready` backlog that exhausts the
+    // budget — and tryPlayHead never leapfrogs, so nothing would ever drain.
+    const head = this.items.find(
+      (u) => u.status === "queued" || u.status === "synthesizing" || u.status === "ready"
+    );
     for (const u of this.items) {
-      if (budget <= 0 || this.inflight >= maxInflight) break;
+      if (this.inflight >= maxInflight) break;
       if (u.status !== "queued") continue;
+      if (budget <= 0 && u !== head) break;
       if (u.kind === "chime") {
         u.status = "ready";
         budget -= 1;

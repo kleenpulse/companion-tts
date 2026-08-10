@@ -9,6 +9,10 @@ export type VizStyle = "waves" | "strands";
 
 export type Theme = "dark" | "light" | "system";
 
+/** What double-clicking a settled feed row does. "next" = after the current
+ * utterance; interrupt modes cut it off; "off" disables the feature. */
+export type ReplayMode = "next" | "interrupt" | "interrupt-clear" | "off";
+
 export interface Settings {
   keys: { elevenlabs: string; mistral: string };
   providerOrder: ProviderId[];
@@ -31,6 +35,8 @@ export interface Settings {
   visualizerStyle: VizStyle;
   /** Feed reveals the spoken row character-by-character, synced to playback. */
   typewriter: boolean;
+  /** Double-click-a-row re-speak behavior. */
+  replayMode: ReplayMode;
   theme: Theme;
   /** Last version whose What's New was acknowledged; "" = never seeded. */
   lastSeenVersion: string;
@@ -202,7 +208,10 @@ export type EngineCmd =
   | { cmd: "set-volume"; v: number }
   | { cmd: "set-rate"; v: number }
   | { cmd: "pin"; sessionId?: string }
-  | { cmd: "speak-test"; text?: string };
+  | { cmd: "speak-test"; text?: string }
+  /** Re-speak a settled feed row. `id` resolves the full utterance engine-side;
+   * `text` is the fallback for backfill rows and pruned ids. */
+  | { cmd: "replay"; id?: string; text?: string; sessionId?: string };
 
 export interface ProviderStatus {
   id: ProviderId;
