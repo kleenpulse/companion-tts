@@ -4,10 +4,17 @@
 //!
 //! Everything here BLOCKS on WinRT async operations — callers must wrap in
 //! `spawn_blocking`, never run this on the async runtime.
+//!
+//! On non-Windows targets the module compiles to stubs (empty voice list,
+//! erroring synthesize) so the command surface and dispatch arm stay uniform;
+//! the provider table's `cfg!(windows)` eligibility keeps the stubs unreached.
 
 use serde::Serialize;
+#[cfg(windows)]
 use windows::core::HSTRING;
+#[cfg(windows)]
 use windows::Media::SpeechSynthesis::SpeechSynthesizer;
+#[cfg(windows)]
 use windows::Storage::Streams::DataReader;
 
 #[derive(Debug, Clone, Serialize)]
@@ -19,6 +26,7 @@ pub struct WindowsVoice {
 }
 
 /// Installed voices, for the panel's voice dropdown.
+#[cfg(windows)]
 #[tauri::command]
 pub fn list_windows_voices() -> Vec<WindowsVoice> {
     let Ok(voices) = SpeechSynthesizer::AllVoices() else {
@@ -37,6 +45,7 @@ pub fn list_windows_voices() -> Vec<WindowsVoice> {
 
 /// Synthesize `text` to WAV bytes. Empty `voice_id` = system default voice;
 /// otherwise matched against installed voices by Id, then DisplayName.
+#[cfg(windows)]
 pub fn synthesize(voice_id: &str, text: &str) -> Result<Vec<u8>, String> {
     let synth = SpeechSynthesizer::new().map_err(|e| format!("init: {e}"))?;
 
@@ -78,7 +87,18 @@ pub fn synthesize(voice_id: &str, text: &str) -> Result<Vec<u8>, String> {
     Ok(buf)
 }
 
-#[cfg(test)]
+#[cfg(not(windows))]
+#[tauri::command]
+pub fn list_windows_voices() -> Vec<WindowsVoice> {
+    Vec::new()
+}
+
+#[cfg(not(windows))]
+pub fn synthesize(_voice_id: &str, _text: &str) -> Result<Vec<u8>, String> {
+    Err("on-device voice is Windows-only".into())
+}
+
+#[cfg(all(test, windows))]
 mod tests {
     // Real WinRT synthesis — offline, fast, and the only proof the engine works.
     #[test]

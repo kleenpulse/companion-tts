@@ -38,3 +38,30 @@ jobs:
       - name: Point bindgen at the runner's LLVM
         run: echo "LIBCLANG_PATH=C:\Program Files\LLVM\bin" >> $env:GITHUB_ENV
       - run: cargo test
+
+  # Phase 0 of macOS/Linux support: prove the crate COMPILES off-Windows.
+  # Tests stay Windows-only until the ports actually run there.
+  cross-check:
+    name: cargo check (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: Install Tauri system deps (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev \
+            build-essential pkg-config
+      - run: cargo check

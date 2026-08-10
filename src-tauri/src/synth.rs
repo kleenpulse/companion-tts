@@ -220,8 +220,10 @@ static PROVIDERS: [Provider; 4] = [
         id: "windows",
         kind: ProviderKind::Local,
         billed: false,
-        // On-device needs no key — always eligible.
-        eligible: |_| true,
+        // On-device needs no key — always eligible where WinRT exists. On
+        // other targets the id stays in the table (order migrations and
+        // status rows keep their shape) but never enters a walk.
+        eligible: |_| cfg!(windows),
         cache_inputs: |s| (String::new(), s.voices.windows.clone()),
     },
 ];

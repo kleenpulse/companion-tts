@@ -8,7 +8,9 @@ use tauri::{AppHandle, Emitter};
 use crate::tailer::{self, TailState};
 
 pub fn projects_root() -> PathBuf {
-    let home = std::env::var("USERPROFILE").unwrap_or_default();
+    let home = std::env::var("USERPROFILE")
+        .or_else(|_| std::env::var("HOME"))
+        .unwrap_or_default();
     PathBuf::from(home).join(".claude").join("projects")
 }
 
