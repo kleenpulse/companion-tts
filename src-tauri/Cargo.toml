@@ -1,6 +1,6 @@
 [package]
 name = "companion-tts"
-version = "0.2.0"
+version = "0.3.0"
 description = "Speaks Claude Code's output aloud from a floating companion"
 authors = ["skyep"]
 license = "GPL-3.0-only"

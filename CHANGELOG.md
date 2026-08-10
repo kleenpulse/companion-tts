@@ -10,6 +10,8 @@ commits, and tags.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-10
+
 ### Added
 
 - Open-source release: GPL-3.0 license, third-party attributions, contributor
