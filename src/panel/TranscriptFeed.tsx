@@ -118,12 +118,12 @@ export function TranscriptFeed() {
           replayable
             ? () =>
                 // Closure values only — inside RevealText, e.target is a
-                // per-character span. Backfill rows send full replayText (the
-                // engine never saw them); live rows send their id, with
-                // displayText as the pruned-id fallback.
+                // per-character span. The id always flows (it anchors the
+                // in-place highlight); `bf:` ids never resolve engine-side,
+                // so backfill rows ride the full replayText fallback.
                 void sendEngineCmd({
                   cmd: "replay",
-                  id: history ? undefined : item.id,
+                  id: item.id,
                   text: history ? (item as BackfillRow).replayText : item.displayText,
                   sessionId: item.sessionId,
                 })

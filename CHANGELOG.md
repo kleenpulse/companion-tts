@@ -13,8 +13,9 @@ commits, and tags.
 ### Added
 
 - Double-click a transcript row to speak it again — jumps the queue. The
+  row highlights in place while it replays (no duplicate feed entry), the
   behavior is configurable in settings (speak next / interrupt current /
-  interrupt + clear queue / off) and double-clicking while muted unmutes
+  interrupt + clear queue / off), and double-clicking while muted unmutes
   first. Rows still waiting their turn are untouched.
 - Attention alerts now ring a distinct urgent triple ping the instant they
   fire — clearly different from the turn-complete chime — with the spoken

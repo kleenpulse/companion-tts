@@ -524,6 +524,16 @@ export class Engine {
   private handleReplay(cmd: { id?: string; text?: string; sessionId?: string }): void {
     const mode = this.settings?.replayMode ?? "next";
     if (mode === "off") return; // panel gates too — defense in depth
+    // Replays are invisible in the feed — without this guard a double-double-
+    // click would stack silent duplicates.
+    const pending = (s: string) =>
+      s === "queued" || s === "synthesizing" || s === "ready" || s === "playing";
+    if (
+      cmd.id &&
+      this.queue.items.some((u) => u.replayOfId === cmd.id && pending(u.status))
+    ) {
+      return;
+    }
     const src = cmd.id ? this.queue.items.find((u) => u.id === cmd.id) : undefined;
     if (src) {
       const settled =
@@ -546,6 +556,9 @@ export class Engine {
       text: p.text,
       displayText: p.display,
       status: "queued",
+      // Anchors the in-place highlight: while this plays, nowPlayingId maps
+      // to the source row instead of spawning a duplicate feed entry.
+      replayOfId: cmd.id,
       enqueuedAt: stamp,
     }));
     // Explicit user action overrides mute (pause is still respected).
@@ -569,8 +582,10 @@ export class Engine {
     return {
       mode: this.computeMode(),
       followedSessionId: this.followedSessionId,
-      nowPlayingId: this.queue.nowPlaying?.id,
-      queue: this.queue.items.map((u) => ({
+      // A playing replay highlights its SOURCE row in place — the replay
+      // utterance itself never appears in the feed (filter below).
+      nowPlayingId: this.queue.nowPlaying?.replayOfId ?? this.queue.nowPlaying?.id,
+      queue: this.queue.items.filter((u) => !u.replayOfId).map((u) => ({
         id: u.id,
         kind: u.kind,
         status: u.status,

@@ -141,6 +141,9 @@ export interface Utterance {
   status: UtteranceStatus;
   audioUrl?: string;
   chimeAfter?: boolean;
+  /** Set on replay utterances: the feed row id this re-speaks. Hidden from
+   * the feed; nowPlayingId maps to this id while playing. */
+  replayOfId?: string;
   enqueuedAt: number;
 }
 
