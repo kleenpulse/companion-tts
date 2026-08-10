@@ -102,13 +102,35 @@ impl Default for Shortcuts {
 #[serde(rename_all = "camelCase", default)]
 pub struct Monthly {
     pub month: String,
+    /// Grand total for the month; pre-split installs carry unattributed chars
+    /// here that never appear in by_provider (the Footer prices those at the
+    /// old ElevenLabs rate, matching what the meter always claimed).
     pub chars: u64,
+    /// Same chars attributed per billed provider — lets the UI price
+    /// ElevenLabs and Mistral usage separately.
+    pub by_provider: std::collections::BTreeMap<String, u64>,
 }
 
 impl Default for Monthly {
     fn default() -> Self {
-        Self { month: String::new(), chars: 0 }
+        Self {
+            month: String::new(),
+            chars: 0,
+            by_provider: std::collections::BTreeMap::new(),
+        }
     }
+}
+
+/// Pure core of the monthly meter: rolls the month over (clearing the
+/// attribution map with it) and books `n` chars against `provider`.
+pub fn apply_chars(m: &mut Monthly, provider: &str, n: u64, month: &str) {
+    if m.month != month {
+        m.month = month.to_string();
+        m.chars = 0;
+        m.by_provider.clear();
+    }
+    m.chars += n;
+    *m.by_provider.entry(provider.to_string()).or_insert(0) += n;
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -401,17 +423,14 @@ pub fn promote_provider(app: &AppHandle, provider: &str) {
     let _ = app.emit("settings-updated", payload_from(&snapshot));
 }
 
-/// Called by synth after each successful synthesis; rolls the month over automatically.
-pub fn add_chars(app: &AppHandle, n: u64) {
+/// Called by synth after each successful billed synthesis; rolls the month
+/// over automatically and attributes the chars to the provider that served.
+pub fn add_chars(app: &AppHandle, provider: &str, n: u64) {
     let month = current_month();
     let state = app.state::<SettingsState>();
     let snapshot = {
         let mut guard = state.0.lock().unwrap();
-        if guard.monthly.month != month {
-            guard.monthly.month = month;
-            guard.monthly.chars = 0;
-        }
-        guard.monthly.chars += n;
+        apply_chars(&mut guard.monthly, provider, n, &month);
         guard.clone()
     };
     save(app, &snapshot);
@@ -458,6 +477,37 @@ mod tests {
         let mut order = vec!["mistral".to_string(), "elevenlabs".to_string()];
         ensure_local_providers(&mut order);
         assert_eq!(order, ["mistral", "elevenlabs", "piper", "windows"]);
+    }
+
+    #[test]
+    fn apply_chars_attributes_per_provider() {
+        let mut m = Monthly { month: "2026-08".into(), chars: 10, ..Default::default() };
+        apply_chars(&mut m, "elevenlabs", 100, "2026-08");
+        apply_chars(&mut m, "mistral", 40, "2026-08");
+        apply_chars(&mut m, "mistral", 5, "2026-08");
+        // Total keeps the 10 legacy unattributed chars on top of the new 145.
+        assert_eq!(m.chars, 155);
+        assert_eq!(m.by_provider.get("elevenlabs"), Some(&100));
+        assert_eq!(m.by_provider.get("mistral"), Some(&45));
+    }
+
+    #[test]
+    fn apply_chars_rollover_clears_the_attribution_map() {
+        let mut m = Monthly::default();
+        apply_chars(&mut m, "elevenlabs", 100, "2026-07");
+        apply_chars(&mut m, "mistral", 50, "2026-08");
+        assert_eq!(m.month, "2026-08");
+        assert_eq!(m.chars, 50);
+        assert_eq!(m.by_provider.get("elevenlabs"), None);
+        assert_eq!(m.by_provider.get("mistral"), Some(&50));
+    }
+
+    #[test]
+    fn monthly_without_by_provider_still_deserializes() {
+        // A pre-split settings.json has no byProvider key.
+        let m: Monthly = serde_json::from_str(r#"{"month":"2026-06","chars":1234}"#).unwrap();
+        assert_eq!(m.chars, 1234);
+        assert!(m.by_provider.is_empty());
     }
 
     #[test]

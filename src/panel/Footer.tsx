@@ -7,6 +7,11 @@ export function Footer() {
   const openSettings = useViewStore((s) => s.openSettings);
   const openChangelog = useViewStore((s) => s.openChangelog);
   const chars = settings?.monthly.chars ?? 0;
+  // Only ElevenLabs usage is priced ($0.05/1K); Mistral chars are counted but
+  // unpriced. Legacy unattributed chars keep the old rate — what the meter
+  // always claimed for them.
+  const mistralChars = settings?.monthly.byProvider?.mistral ?? 0;
+  const pricedChars = Math.max(0, chars - mistralChars);
 
   const dot =
     watcherStatus === "dead" || engineState?.mode === "error"
@@ -45,9 +50,12 @@ export function Footer() {
       >
         voice: {voiceMode}
       </button>
-      <span className="justify-self-end whitespace-nowrap font-display text-[9px] uppercase tracking-[0.15em] text-ink-mute">
+      <span
+        title={mistralChars > 0 ? `estimate covers ElevenLabs only; ${compactChars(mistralChars)} Mistral chars unpriced` : undefined}
+        className="justify-self-end whitespace-nowrap font-display text-[9px] uppercase tracking-[0.15em] text-ink-mute"
+      >
         {compactChars(chars)} chars
-        <span className="hidden min-[430px]:inline"> · {costEstimate(chars)} mo</span>
+        <span className="hidden min-[430px]:inline"> · {costEstimate(pricedChars)} mo</span>
         {appVersion && (
           <span className="hidden min-[480px]:inline">
             {" · "}

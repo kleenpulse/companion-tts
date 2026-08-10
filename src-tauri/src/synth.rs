@@ -401,7 +401,7 @@ pub async fn synthesize(
 
                 // Monthly chars is a paid-usage proxy — local providers are free.
                 if provider.billed {
-                    crate::settings::add_chars(&app, text.chars().count() as u64);
+                    crate::settings::add_chars(&app, provider.id, text.chars().count() as u64);
                 }
                 // Store under the provider that ACTUALLY served (fallback may
                 // differ from the looked-up primary) so a later hit replays

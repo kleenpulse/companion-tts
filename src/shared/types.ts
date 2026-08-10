@@ -41,7 +41,13 @@ export interface Settings {
   panelBounds?: { x: number; y: number; width: number; height: number } | null;
   autostart: boolean;
   shortcuts: { mute: string; pauseResume: string };
-  monthly: { month: string; chars: number };
+  monthly: {
+    month: string;
+    /** Grand total; pre-split installs carry unattributed legacy chars here. */
+    chars: number;
+    /** Chars attributed per billed provider (elevenlabs/mistral). */
+    byProvider?: Partial<Record<ProviderId, number>>;
+  };
 }
 
 export interface EnvKeys {
