@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::collections::HashMap;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::Read;
 use std::path::Path;
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -198,17 +198,11 @@ pub fn tail_backfill(app: AppHandle, session_id: String, max_events: usize) -> V
     };
     let len = file.metadata().map(|m| m.len()).unwrap_or(0);
     let start = len.saturating_sub(BACKFILL_BYTES);
-    if file.seek(SeekFrom::Start(start)).is_err() {
+    let Ok(lines) = crate::tail::read_window_lines(&mut file, start) else {
         return vec![];
-    }
-    let mut buf = Vec::new();
-    if file.read_to_end(&mut buf).is_err() {
-        return vec![];
-    }
-    let text = String::from_utf8_lossy(&buf);
-    let mut events: Vec<SessionEvent> = text
-        .lines()
-        .skip(if start > 0 { 1 } else { 0 }) // first line is likely partial
+    };
+    let mut events: Vec<SessionEvent> = lines
+        .iter()
         .filter_map(|l| parser::classify(l, &session_id))
         .filter(|e| matches!(e, SessionEvent::Text { .. } | SessionEvent::Tool { .. }))
         .collect();

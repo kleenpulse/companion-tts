@@ -7,6 +7,7 @@ mod sessions;
 mod settings;
 mod shortcuts;
 mod synth;
+mod tail;
 mod tailer;
 mod tray;
 mod watcher;

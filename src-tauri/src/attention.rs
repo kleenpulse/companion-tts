@@ -7,10 +7,11 @@
 //! is never re-announced).
 
 use serde::Serialize;
-use std::io::{Read, Seek, SeekFrom};
 use std::path::PathBuf;
 use std::sync::mpsc;
 use tauri::{AppHandle, Emitter, Manager};
+
+use crate::tail::TailCursor;
 
 const NOTIFICATIONS_FILE: &str = "notifications.jsonl";
 const HOOK_SCRIPT: &str = "notification-hook.ps1";
@@ -145,7 +146,8 @@ pub fn spawn(app: AppHandle) {
         let file_path = data_dir.join(NOTIFICATIONS_FILE);
 
         // Prime at current EOF — old notifications are history, never spoken.
-        let mut offset: u64 = std::fs::metadata(&file_path).map(|m| m.len()).unwrap_or(0);
+        let mut cursor =
+            TailCursor::primed_at_eof(std::fs::metadata(&file_path).map(|m| m.len()).unwrap_or(0));
 
         let (tx, rx) = mpsc::channel::<()>();
         use notify::Watcher;
@@ -171,38 +173,17 @@ pub fn spawn(app: AppHandle) {
             return;
         }
 
-        while rx.recv().is_ok() {
-            // Coalesce bursts, then drain new complete lines.
-            std::thread::sleep(std::time::Duration::from_millis(40));
-            while rx.try_recv().is_ok() {}
-
+        // Coalesce bursts (shared 40ms window), then drain new complete lines.
+        while crate::watcher::recv_burst(&rx, |_| {}) {
             let Ok(mut file) = std::fs::File::open(&file_path) else {
                 continue;
             };
             let len = file.metadata().map(|m| m.len()).unwrap_or(0);
-            if len < offset {
-                offset = len; // truncated/rotated: never replay
+            let Ok(lines) = cursor.drain(&mut file, len) else {
                 continue;
-            }
-            if len == offset {
-                continue;
-            }
-            if file.seek(SeekFrom::Start(offset)).is_err() {
-                continue;
-            }
-            let mut buf = Vec::new();
-            if file.read_to_end(&mut buf).is_err() {
-                continue;
-            }
-            // Only consume up to the last complete newline.
-            let consumed = match buf.iter().rposition(|&b| b == b'\n') {
-                Some(pos) => pos + 1,
-                None => continue,
             };
-            let text = String::from_utf8_lossy(&buf[..consumed]).to_string();
-            offset += consumed as u64;
 
-            for line in text.lines() {
+            for line in &lines {
                 let line = line.trim_start_matches('\u{feff}').trim();
                 if line.is_empty() {
                     continue;

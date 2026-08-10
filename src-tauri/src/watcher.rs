@@ -75,29 +75,36 @@ fn run(app: &AppHandle) -> notify::Result<()> {
     let _ = app.emit("watcher-status", "watching");
 
     loop {
-        let first = match rx.recv() {
-            Ok(ev) => ev,
-            Err(_) => break, // channel closed — app shutting down
-        };
-
         let mut dirty: HashSet<PathBuf> = HashSet::new();
-        collect(first, &root, &mut dirty);
-
-        // Coalesce the burst: Claude Code writes several lines per turn boundary,
-        // and Windows fires multiple Modify events per logical write.
-        let deadline = Instant::now() + Duration::from_millis(40);
-        while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
-            match rx.recv_timeout(remaining) {
-                Ok(ev) => collect(ev, &root, &mut dirty),
-                Err(_) => break,
-            }
+        if !recv_burst(&rx, |ev| collect(ev, &root, &mut dirty)) {
+            break; // channel closed — app shutting down
         }
-
         for path in dirty {
             tailer::process_path(app, &mut tails, &path);
         }
     }
     Ok(())
+}
+
+/// Block for one channel item, then keep feeding `each` with everything that
+/// lands within the next 40ms. Coalesces the burst: Claude Code writes several
+/// lines per turn boundary, and Windows fires multiple Modify events per
+/// logical write. Returns false once the channel closes before anything
+/// arrives. Shared with the attention notifications tail.
+pub fn recv_burst<T>(rx: &mpsc::Receiver<T>, mut each: impl FnMut(T)) -> bool {
+    let first = match rx.recv() {
+        Ok(item) => item,
+        Err(_) => return false,
+    };
+    each(first);
+    let deadline = Instant::now() + Duration::from_millis(40);
+    while let Some(remaining) = deadline.checked_duration_since(Instant::now()) {
+        match rx.recv_timeout(remaining) {
+            Ok(item) => each(item),
+            Err(_) => break,
+        }
+    }
+    true
 }
 
 fn collect(ev: notify::Result<notify::Event>, root: &Path, dirty: &mut HashSet<PathBuf>) {
