@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo.png" width="128" alt="Companion TTS logo">
+</p>
+
 # Companion TTS
 
 **A floating desktop companion that speaks Claude Code's output aloud.**

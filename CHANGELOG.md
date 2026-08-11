@@ -10,6 +10,11 @@ commits, and tags.
 
 ## [Unreleased]
 
+### Changed
+
+- New app icon — the strand dial, everywhere: installer, taskbar, tray,
+  Start menu, and the README.
+
 ## [0.4.0] - 2026-08-10
 
 ### Added
