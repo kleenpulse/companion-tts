@@ -34,7 +34,10 @@ code should use these names; sharpen or extend this file when a term shifts.
   providers from `provider_order`; the synthesize command consumes its output.
 - **Breaker** — per-provider failure state: `permanently_failed` (cloud auth
   401/403, process lifetime) and consecutive-failure counts driving the
-  auto-switch after 3 primary failures.
+  auto-switch after 3 primary failures. Only that 3-strike case rewrites
+  `provider_order`; an unconfigured or auth-tripped primary is skipped for
+  free by the walk and the panel's "speaking:" badge shows the divergence
+  instead.
 
 ## Tailing (Rust)
 

@@ -248,6 +248,17 @@ fn plan(
         .collect()
 }
 
+/// The auto-switch decision, pure for tests. Promote the serving fallback
+/// only when the primary is still in the walk (eligible, breaker closed) yet
+/// keeps failing transiently — each retry burns an attempt (up to the 20s
+/// timeout) on every utterance. A primary that plan() already skips for free
+/// (no key, no piper voice, or auth-tripped) keeps the user's selection; the
+/// panel's "speaking:" badge shows the divergence instead of the order being
+/// rewritten behind the user's back.
+fn should_promote(primary_eligible: bool, primary_auth_failed: bool, primary_failures: u32) -> bool {
+    primary_eligible && !primary_auth_failed && primary_failures >= AUTO_SWITCH_AFTER
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderStatus {
@@ -380,25 +391,26 @@ pub async fn synthesize(
                 // Tell the UI which voice actually spoke.
                 let _ = app.emit("synth-used", provider.id);
 
-                // Auto-switcher: fallback succeeded while the primary is
-                // unconfigured (no key / no voice — silently skipped forever),
-                // dead (breaker), or persistently failing — promote the
-                // fallback so the VOICE header tells the truth.
+                // Auto-switcher: the primary is still in the walk but keeps
+                // failing transiently — every utterance burns a failed attempt
+                // on it. After AUTO_SWITCH_AFTER strikes, promote the fallback
+                // that actually served. An unconfigured or breaker-tripped
+                // primary costs nothing to skip, so the user's selection stays
+                // and the panel badge shows the divergence.
                 if provider.id != primary && !primary.is_empty() {
                     let primary_eligible = provider_by_id(&primary)
                         .map(|p| (p.eligible)(&ctx))
                         .unwrap_or(false);
-                    let promote = !primary_eligible
-                        || state.permanently_failed.lock().unwrap().contains(&primary)
-                        || state
-                            .consecutive_failures
-                            .lock()
-                            .unwrap()
-                            .get(&primary)
-                            .copied()
-                            .unwrap_or(0)
-                            >= AUTO_SWITCH_AFTER;
-                    if promote {
+                    let auth_failed =
+                        state.permanently_failed.lock().unwrap().contains(&primary);
+                    let failures = state
+                        .consecutive_failures
+                        .lock()
+                        .unwrap()
+                        .get(&primary)
+                        .copied()
+                        .unwrap_or(0);
+                    if should_promote(primary_eligible, auth_failed, failures) {
                         crate::settings::promote_provider(&app, provider.id);
                     }
                 }
@@ -502,6 +514,29 @@ mod tests {
             ids(&plan(&o, &HashSet::new(), &ctx(true, true, true))),
             ["elevenlabs", "windows"]
         );
+    }
+
+    #[test]
+    fn ineligible_primary_never_promotes() {
+        // The bug: zero failures, primary merely unconfigured — selection sticks.
+        assert!(!should_promote(false, false, 0));
+        assert!(!should_promote(false, false, 99));
+    }
+
+    #[test]
+    fn auth_tripped_primary_never_promotes() {
+        // Breaker-open primaries are skipped for free by the walk; fixing the
+        // key (reset_breaker on set_settings) restores them without reselecting.
+        assert!(!should_promote(true, true, 0));
+        assert!(!should_promote(true, true, AUTO_SWITCH_AFTER));
+    }
+
+    #[test]
+    fn promotes_after_three_consecutive_transient_failures() {
+        assert!(!should_promote(true, false, 0));
+        assert!(!should_promote(true, false, AUTO_SWITCH_AFTER - 1));
+        assert!(should_promote(true, false, AUTO_SWITCH_AFTER));
+        assert!(should_promote(true, false, AUTO_SWITCH_AFTER + 1));
     }
 
     #[test]

@@ -1,4 +1,5 @@
 import { X } from "lucide-react";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import {
   downloadPiperVoice,
@@ -71,8 +72,10 @@ export function ProviderCard() {
 
   const primary = settings.providerOrder[0] ?? "elevenlabs";
   const anyFailed = providers.some((p) => p.permanentlyFailed);
-  const bothKeys = providers.filter((p) => p.hasKey).length >= 2;
   const active = engineState?.activeProvider;
+  // hasKey mirrors the synth walk's eligibility predicate — for piper it means
+  // "voice downloaded". Windows is always eligible, so it never banners.
+  const primaryBlocked = providers.some((p) => p.id === primary && !p.hasKey);
 
   const setPrimary = (p: ProviderId) => {
     // Order-preserving promote — mirrors Rust promote_provider semantics.
@@ -95,15 +98,11 @@ export function ProviderCard() {
         <span className="flex items-center gap-1.5">
           Voice
           <span className="normal-case tracking-normal text-ink-mute/80">· {primary}</span>
-          {/* the voice you actually hear — only interesting with both keys set */}
-          {bothKeys && active && (
-            <span
-              className={`rounded-sm border px-1 text-[8px] tracking-[0.15em] ${
-                active === primary
-                  ? "border-accent/40 bg-accent/10 text-accent"
-                  : "border-danger/40 bg-danger/10 text-danger"
-              }`}
-            >
+          {/* the voice actually speaking, whenever it diverges from the
+              selection — informational, not an error; degraded/unavailable
+              badges carry the danger signal */}
+          {active && active !== primary && (
+            <span className="rounded-sm border border-hairline bg-bench-700 px-1 text-[8px] normal-case tracking-normal text-ink-mute">
               speaking: {active}
             </span>
           )}
@@ -131,6 +130,32 @@ export function ProviderCard() {
               onChange={setPrimary}
             />
           </div>
+          {/* Selection sticks even when unusable — this banner says why it's
+              silent and where the missing piece goes. */}
+          <AnimatePresence initial={false}>
+            {primaryBlocked && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                className="overflow-hidden"
+              >
+                <div className="mt-1.5 rounded-md border border-hairline bg-raised px-2.5 py-1.5">
+                  <span className="font-display text-[9px] uppercase tracking-[0.15em] text-accent">
+                    {primary} needs setup
+                  </span>
+                  <p className="mt-0.5 text-[10px] leading-snug text-ink-dim">
+                    {primary === "piper"
+                      ? "No voice downloaded — pick one from the Piper voice list below."
+                      : `No API key — add one under General, or set the ${
+                          primary === "elevenlabs" ? "ELEVEN_LABS" : "MISTRAL_API_KEY"
+                        } env var. Speech falls back to the next available voice meanwhile.`}
+                  </p>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
           <div className="mt-1.5 grid grid-cols-2 gap-2">
             {(["elevenlabs", "mistral"] as const).map((id) => (
               <label key={id} className="block min-w-0">

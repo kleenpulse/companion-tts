@@ -77,7 +77,11 @@ export const usePanelStore = create<PanelState>((set, get) => ({
       void get().saveSettings({ lastSeenVersion: appVersion });
     }
 
-    await onSettingsUpdated((p) => set({ settings: p.settings, envKeys: p.envKeys }));
+    await onSettingsUpdated((p) => {
+      set({ settings: p.settings, envKeys: p.envKeys });
+      // Breaker resets ride every settings save — keep the badges honest.
+      void get().refreshProviders();
+    });
     await onSessionsUpdated((s) => set({ sessions: s }));
     await onWatcherStatus((s) => set({ watcherStatus: s }));
     await onEngineState((engineState) => {
