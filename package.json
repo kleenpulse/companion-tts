@@ -1,7 +1,7 @@
 {
   "name": "companion-tts",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.5.0",
   "description": "A floating desktop companion that speaks Claude Code's output aloud",
   "license": "GPL-3.0-only",
   "repository": {

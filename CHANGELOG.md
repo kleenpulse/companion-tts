@@ -10,6 +10,8 @@ commits, and tags.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-12
+
 ### Added
 
 - A setup banner under the primary voice picker explains why a chosen voice
