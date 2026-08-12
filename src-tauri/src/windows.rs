@@ -9,7 +9,7 @@ const FAB_BASE_LOGICAL: f64 = 64.0;
 /// Mirror of tauri.conf.json panel minWidth/minHeight — parked bounds saved
 /// before a min bump would otherwise restore a too-small window.
 const PANEL_MIN_W_LOGICAL: f64 = 360.0;
-const PANEL_MIN_H_LOGICAL: f64 = 480.0;
+const PANEL_MIN_H_LOGICAL: f64 = 560.0;
 /// Moved/Resized events inside this window after a programmatic placement are ours, not the user's.
 const SUPPRESS_MS: u64 = 800;
 

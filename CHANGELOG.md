@@ -10,6 +10,21 @@ commits, and tags.
 
 ## [Unreleased]
 
+### Changed
+
+- Mistral Voxtral now plays noticeably louder — its per-provider gain lift went
+  from 1.3x to 1.85x, closing the volume gap against ElevenLabs at the same
+  volume setting. A peak limiter was added to the playback chain so the extra
+  gain rides the peaks instead of clipping.
+
+### Fixed
+
+- The What's New card no longer pushes the transcript feed and transport
+  controls off the bottom of the panel. It now floats over the session list as
+  a dismissible overlay with its own scroll, so a long release announcement
+  can't crowd out the rest of the panel. The panel's minimum height also rose
+  to 560px, which is what the feed and controls actually need.
+
 ## [0.5.0] - 2026-08-12
 
 ### Added
