@@ -1,7 +1,7 @@
 /**
  * One persistent <audio> element wired through Web Audio:
- *   element → MediaElementSource → BoostGain (per-provider) → Gain (volume/mute)
- *   → Analyser → destination.
+ *   element → MediaElementSource → BoostGain (per-provider) → Limiter
+ *   → Gain (volume/mute) → Analyser → destination.
  * The analyser drives the FAB's waveform ring. The chime is two oscillators
  * into the master gain directly, so volume and mute apply to everything but
  * provider corrections never color the chime.
@@ -19,6 +19,7 @@ export class Player {
   private ctx: AudioContext | null = null;
   private gain: GainNode | null = null;
   private boostNode: GainNode | null = null;
+  private limiter: DynamicsCompressorNode | null = null;
   analyser: AnalyserNode | null = null;
 
   private volume = 0.9;
@@ -40,6 +41,14 @@ export class Player {
     const src = this.ctx.createMediaElementSource(this.el);
     this.boostNode = this.ctx.createGain();
     this.boostNode.gain.value = this.boost.gain;
+    // Boosts above 1 would hard-clip at the destination; this rides the peaks
+    // instead. Transparent for unboosted providers (nothing reaches -2dBFS).
+    this.limiter = this.ctx.createDynamicsCompressor();
+    this.limiter.threshold.value = -2;
+    this.limiter.knee.value = 0;
+    this.limiter.ratio.value = 20;
+    this.limiter.attack.value = 0.002;
+    this.limiter.release.value = 0.1;
     this.gain = this.ctx.createGain();
     this.gain.gain.value = this.volume;
     this.analyser = this.ctx.createAnalyser();
@@ -47,7 +56,8 @@ export class Player {
     this.analyser.smoothingTimeConstant = 0.7;
     // Analyser MUST chain to destination or audio goes silent.
     src.connect(this.boostNode);
-    this.boostNode.connect(this.gain);
+    this.boostNode.connect(this.limiter);
+    this.limiter.connect(this.gain);
     this.gain.connect(this.analyser);
     this.analyser.connect(this.ctx.destination);
   }

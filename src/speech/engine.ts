@@ -30,7 +30,7 @@ const ATTENTION_RATE_LIMIT_MS = 20_000;
  * Voxtral runs slower AND quieter than ElevenLabs' loudness-normalized
  * output — nudge both. Locals need nothing (Piper peak-normalizes in Rust). */
 const PROVIDER_BOOST: Partial<Record<ProviderId, { rate: number; gain: number }>> = {
-  mistral: { rate: 1.1, gain: 1.3 },
+  mistral: { rate: 1.1, gain: 1.85 },
 };
 const NO_BOOST = { rate: 1, gain: 1 };
 

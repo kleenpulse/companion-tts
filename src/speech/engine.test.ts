@@ -126,7 +126,7 @@ describe("provider boost", () => {
 
     h.io.push.synthUsed("mistral");
     expect(h.player.providerBoost.rate).toBeCloseTo(1.1);
-    expect(h.player.providerBoost.gain).toBeCloseTo(1.3);
+    expect(h.player.providerBoost.gain).toBeCloseTo(1.85);
 
     h.io.push.synthUsed("piper");
     expect(h.player.providerBoost).toEqual({ rate: 1, gain: 1 });
