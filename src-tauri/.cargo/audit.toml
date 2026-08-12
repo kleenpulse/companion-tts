@@ -1,0 +1,12 @@
+# cargo-audit config. CI does not run cargo-audit; this documents known,
+# consciously-accepted advisories for contributors who run it locally.
+[advisories]
+ignore = [
+    # glib VariantStrIter unsoundness (NULL-deref crash, no CVE). Unfixable on
+    # tauri 2.x: the GTK3 bindings are frozen at glib 0.18 and the fix only
+    # exists in glib 0.20. Linux-target-gated — never compiled into shipped
+    # Windows builds — and the vulnerable API (Variant::array_iter_str) is not
+    # called by tauri/wry/tao. Remove when tauri ships gtk4-rs
+    # (tauri-apps/tauri#12561).
+    "RUSTSEC-2024-0429",
+]
