@@ -10,6 +10,8 @@ commits, and tags.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-08-12
+
 ### Changed
 
 - Mistral Voxtral now plays noticeably louder — its per-provider gain lift went
