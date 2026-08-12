@@ -10,6 +10,27 @@ commits, and tags.
 
 ## [Unreleased]
 
+### Added
+
+- A setup banner under the primary voice picker explains why a chosen voice
+  can't speak yet — missing API key (and which env var works instead) or no
+  Piper voice downloaded — and clears itself the moment the gap is filled.
+- The Voice header shows a "speaking: X" chip whenever the voice actually
+  playing differs from your selection (previously only visible with two API
+  keys configured).
+- `scripts/demo-session.mjs` — a camera-ready ~90 second scripted session for
+  marketing recordings: narration, blurbs, plan approval, a question, a
+  permission alert, and the chime.
+
+### Fixed
+
+- Picking a primary voice no longer snaps back to on-device. The auto-switcher
+  used to rewrite your saved order the instant the chosen provider was missing
+  its API key or Piper voice — even the "voice switched" announcement itself
+  could trigger it. It now steps in only after three consecutive real failures;
+  an unconfigured or auth-failed primary keeps your selection while speech
+  quietly falls back, and fixing the key restores your choice automatically.
+
 ## [0.4.1] - 2026-08-11
 
 ### Changed
