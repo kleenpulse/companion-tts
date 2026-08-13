@@ -10,6 +10,8 @@ commits, and tags.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-08-13
+
 ### Fixed
 
 - Permission prompts ("Allow this bash command?") now actually call for your
