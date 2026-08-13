@@ -23,9 +23,15 @@ import { shortTitle } from "../shared/format";
 const FOLLOW_HYSTERESIS_MS = 5000;
 const ERROR_RATE_LIMIT_MS = 30_000;
 const CHIME_MEMORY = 64;
-/** Grace before speaking a permission alert — canceled if the session moves on. */
-const ATTENTION_ARM_MS = 2500;
-const ATTENTION_RATE_LIMIT_MS = 20_000;
+/** Grace before *speaking* a permission alert — canceled if the session moves on.
+ * The ping does not wait: PermissionRequest fires as the prompt renders, so the
+ * cue is ground truth, and this window only spares you a narration you already
+ * answered. */
+const ATTENTION_ARM_MS = 1500;
+const ATTENTION_RATE_LIMIT_MS = 10_000;
+/** Ping floor. A run of prompts should ping per prompt — only collapse the
+ * same-instant burst of a multi-tool turn. */
+const ATTENTION_PING_MIN_MS = 1000;
 /** Per-provider playback corrections, layered over the user's settings.
  * Voxtral runs slower AND quieter than ElevenLabs' loudness-normalized
  * output — nudge both. Locals need nothing (Piper peak-normalizes in Rust). */
@@ -133,6 +139,7 @@ export class Engine {
   private chimedMsgIds: string[] = [];
   private lastErrorSpokenAt = new Map<string, number>();
   private lastAttentionAt = new Map<string, number>();
+  private lastPingAt = 0;
   private pendingAttention = new Map<string, ReturnType<typeof setTimeout>>();
   private sessions = new Map<string, SessionInfo>();
 
@@ -378,8 +385,10 @@ export class Engine {
   private routeAttention(sessionId: string, message: string): void {
     const text = attentionText(message);
     if (isPermissionMessage(message)) {
-      // Grace window: if the user approves fast enough that the session moves
-      // on, the alert dissolves unspoken.
+      // The prompt is on screen NOW — ping first, narrate later. Only the spoken
+      // sentence waits out the grace window, so answering instantly costs you one
+      // ping instead of a full alert after the fact.
+      this.pingAttention();
       const key = sessionId || "unknown";
       const existing = this.pendingAttention.get(key);
       if (existing) clearTimeout(existing);
@@ -387,7 +396,7 @@ export class Engine {
         key,
         setTimeout(() => {
           this.pendingAttention.delete(key);
-          this.speakAttention(sessionId, text);
+          this.speakAttention(sessionId, text, false);
         }, ATTENTION_ARM_MS)
       );
     } else {
@@ -396,16 +405,25 @@ export class Engine {
     }
   }
 
-  private speakAttention(sessionId: string, text: string): void {
+  /** The audible cue on its own — no queue, no per-session rate limit. Muted =
+   * silent (a queued alert would be discarded too). */
+  private pingAttention(): void {
+    if (!this.settings?.features.attention) return;
+    if (this.queue.muted) return;
+    const now = Date.now();
+    if (now - this.lastPingAt < ATTENTION_PING_MIN_MS) return;
+    this.lastPingAt = now;
+    this.deps.player.attentionPing();
+  }
+
+  private speakAttention(sessionId: string, text: string, ping = true): void {
     if (!this.settings?.features.attention) return;
     const key = sessionId || "unknown";
     const last = this.lastAttentionAt.get(key) ?? 0;
     if (Date.now() - last < ATTENTION_RATE_LIMIT_MS) return;
     this.lastAttentionAt.set(key, Date.now());
 
-    // Instant audible cue — the spoken alert follows in queue order. Muted =
-    // silent (the enqueue below would discard the speech too).
-    if (!this.queue.muted) this.deps.player.attentionPing();
+    if (ping) this.pingAttention();
 
     // Name the session when it isn't the one being narrated.
     let spoken = text;

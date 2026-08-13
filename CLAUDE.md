@@ -51,13 +51,22 @@ anti-throttling browser args make that safe).
 
 **Attention alerts** (`attention.rs` + `speech/attention.ts`): the transcript is
 silent while Claude Code waits on a permission prompt, so stall-guessing would
-false-alarm on slow commands. Instead we install a Claude Code Notification hook
-(`~/.claude/settings.json`, helper ps1 in app-data; original settings backed up
-once to `settings.json.companion-bak`) that appends hook JSON to
-`notifications.jsonl`, which Rust tails EOF-primed and emits as
-`attention-event`s. Permission alerts arm a 2.5s grace window canceled by fresh
-transcript activity; AskUserQuestion/ExitPlanMode are announced straight from
-the transcript (they never fire the hook).
+false-alarm on slow commands. Instead we install two Claude Code hooks
+(`~/.claude/settings.json`, one shared helper ps1 in app-data; original settings
+backed up once to `settings.json.companion-bak`) that append a normalized
+`{session_id, message}` line to `notifications.jsonl`, which Rust tails
+EOF-primed and emits as `attention-event`s. **`PermissionRequest`** is the
+load-bearing one — it fires as the prompt renders and ONLY when one is actually
+shown (verified: allow-listed and auto-approved tools produce nothing). Its
+payload has `tool_name`, not `message`, so the ps1 phrases it into the same
+sentence. `Notification` is kept only for the 60s-idle "waiting for your input"
+notice: Claude Code gates it behind a presence check, so it stays silent
+whenever you're at the keyboard — never rely on it for permission alerts. The
+helper must print nothing to stdout (a `PermissionRequest` hook's stdout can
+steer the permission decision). Permission alerts ping immediately and arm a
+1.5s grace window before *speaking*, canceled by fresh transcript activity;
+AskUserQuestion/ExitPlanMode are announced straight from the transcript (they
+never fire a hook).
 
 ## Load-bearing invariants (violate = broken product)
 

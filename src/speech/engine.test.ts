@@ -146,7 +146,18 @@ describe("provider-aware queue limits", () => {
 });
 
 describe("attention grace window", () => {
-  it("dissolves a permission alert when the session moves on within 2.5s", async () => {
+  it("pings the instant the prompt lands, before any grace window", async () => {
+    h = await bootHarness();
+
+    h.attention("A", "Claude needs your permission to use Bash");
+    await h.advance(0);
+
+    // The prompt is already on screen — the cue must not wait on the window.
+    expect(h.player.attentionPings).toBe(1);
+    expect(h.state().queue.some((u) => u.kind === "attention")).toBe(false);
+  });
+
+  it("dissolves the spoken alert when the session moves on — the ping stands", async () => {
     h = await bootHarness();
 
     h.text("A", "narrating along");
@@ -157,34 +168,51 @@ describe("attention grace window", () => {
 
     expect(h.state().queue.some((u) => u.kind === "attention")).toBe(false);
     expect(h.spokenTexts().some((t) => t.includes("approval"))).toBe(false);
-    // A dissolved alert never rings the attention cue either.
-    expect(h.player.attentionPings).toBe(0);
+    // Answering fast costs one ping, not a narration after the fact.
+    expect(h.player.attentionPings).toBe(1);
   });
 
-  it("speaks after 2.5s of silence, into the _shared cache scope", async () => {
+  it("speaks after 1.5s of silence, into the _shared cache scope", async () => {
     h = await bootHarness();
 
     h.attention("A", "Claude needs your permission to use Bash");
-    await h.advance(2500);
+    await h.advance(1500);
     await h.settle();
 
     expect(h.state().queue.some((u) => u.kind === "attention")).toBe(true);
     const call = h.io.synthCalls.find((c) => c.text.includes("approval"));
     expect(call?.text).toBe("Claude needs your approval to run a command.");
     expect(call?.scope).toBe("_shared");
-    // The distinct triple ping fired the instant the alert committed.
-    expect(h.player.attentionPings).toBe(1);
+    expect(h.player.attentionPings).toBe(1); // no second ping when it commits
   });
 
-  it("rate limit covers the ping — a second alert within 20s stays silent", async () => {
+  it("pings every prompt in a run; only the narration is rate limited", async () => {
     h = await bootHarness();
 
     h.attention("A", "Claude needs your permission to use Bash");
-    await h.advance(2500);
+    await h.advance(1500);
+    await h.settle();
     expect(h.player.attentionPings).toBe(1);
+    expect(h.io.synthCalls.filter((c) => c.text.includes("approval"))).toHaveLength(1);
 
+    // Approve, next prompt three seconds later: still worth looking up for.
     h.attention("A", "Claude needs your permission to use Edit");
-    await h.advance(2500);
+    await h.advance(1500);
+    await h.settle();
+    expect(h.player.attentionPings).toBe(2);
+    // …but not worth a second sentence inside the rate-limit window.
+    expect(h.io.synthCalls.filter((c) => c.text.includes("approval"))).toHaveLength(1);
+  });
+
+  it("collapses a same-instant burst into one ping", async () => {
+    h = await bootHarness();
+
+    // One turn, three tools, three PermissionRequest hooks back to back.
+    h.attention("A", "Claude needs your permission to use Bash");
+    h.attention("A", "Claude needs your permission to use Write");
+    h.attention("A", "Claude needs your permission to use Edit");
+    await h.advance(0);
+
     expect(h.player.attentionPings).toBe(1);
   });
 

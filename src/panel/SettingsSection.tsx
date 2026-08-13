@@ -199,7 +199,7 @@ export function SettingsSection() {
           </label>
           <div className="flex items-center justify-between rounded-md px-0.5 py-0.5">
             <span className="font-display text-[10px] uppercase tracking-[0.15em] text-ink-mute">
-              Attention hook
+              Attention hooks
             </span>
             {hookInstalled === null ? (
               <span className="font-mono text-[10px] text-ink-mute">…</span>

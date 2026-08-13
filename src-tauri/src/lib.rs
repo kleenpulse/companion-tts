@@ -70,8 +70,9 @@ pub fn run() {
             tray::init(app)?;
             shortcuts::apply(&handle, &loaded);
             windows::apply_autostart(&handle, loaded.autostart);
-            // The Notification hook is the attention feature's plumbing —
-            // managed like autostart. Idempotent; backs up the original once.
+            // The Claude Code hooks are the attention feature's plumbing —
+            // managed like autostart. Idempotent, so an install predating the
+            // PermissionRequest hook is upgraded here; backs up the original once.
             if loaded.features.attention {
                 if let Err(e) = attention::ensure_hook(&handle) {
                     eprintln!("[attention] hook install failed: {e}");

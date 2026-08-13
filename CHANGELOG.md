@@ -10,6 +10,26 @@ commits, and tags.
 
 ## [Unreleased]
 
+### Fixed
+
+- Permission prompts ("Allow this bash command?") now actually call for your
+  attention. They were nearly always silent: attention alerts rode Claude Code's
+  `Notification` hook, which is gated behind a presence check — sit at the
+  keyboard and Claude Code decides you already saw the prompt and never sends
+  one. Only plan approvals and questions got through, because those are read
+  from the transcript. Companion now installs Claude Code's `PermissionRequest`
+  hook, which fires as the prompt renders and is not presence-gated. Existing
+  installs pick it up on the next launch.
+
+### Changed
+
+- A permission alert pings the moment the prompt appears instead of waiting out
+  the grace window; only the spoken sentence waits, and it now waits 1.5s rather
+  than 2.5s. Answering fast costs you one short ping instead of being narrated
+  after the fact. Consecutive prompts each get a ping, while the spoken alert
+  stays rate limited (20s → 10s) so a run of approvals doesn't turn into a
+  monologue.
+
 ## [0.5.1] - 2026-08-12
 
 ### Changed
