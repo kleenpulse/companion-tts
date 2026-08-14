@@ -23,10 +23,10 @@ import { shortTitle } from "../shared/format";
 const FOLLOW_HYSTERESIS_MS = 5000;
 const ERROR_RATE_LIMIT_MS = 30_000;
 const CHIME_MEMORY = 64;
-/** Grace before *speaking* a permission alert — canceled if the session moves on.
- * The ping does not wait: PermissionRequest fires as the prompt renders, so the
- * cue is ground truth, and this window only spares you a narration you already
- * answered. */
+/** Fallback grace before *speaking* a permission alert, used until settings
+ * land (`settings.attentionDelayMs` owns it after that). The ping never waits:
+ * PermissionRequest fires as the prompt renders, so the cue is ground truth,
+ * and this window only spares you a narration you already answered. */
 const ATTENTION_ARM_MS = 1500;
 const ATTENTION_RATE_LIMIT_MS = 10_000;
 /** Ping floor. A run of prompts should ping per prompt — only collapse the
@@ -39,6 +39,11 @@ const PROVIDER_BOOST: Partial<Record<ProviderId, { rate: number; gain: number }>
   mistral: { rate: 1.1, gain: 1.85 },
 };
 const NO_BOOST = { rate: 1, gain: 1 };
+
+/** "windows" is an implementation detail; listeners hear "on-device". */
+function spokenProviderName(p: ProviderId): string {
+  return p === "windows" ? "on-device" : p;
+}
 
 export type Unsubscribe = () => void;
 
@@ -146,6 +151,10 @@ export class Engine {
   private audioUnlocked = true;
   private watcherStatus = "starting";
   private activeProvider: ProviderId | undefined;
+  /** Rust's plan head — the provider the next synthesis would use. */
+  private plannedProvider: ProviderId | undefined;
+  /** The last voice named aloud (or adopted silently at boot) — announcement dedupe anchor. */
+  private announcedProvider: ProviderId | undefined;
   private broadcastTimer: ReturnType<typeof setTimeout> | null = null;
   private vizTimer: ReturnType<typeof setInterval> | null = null;
   private vizBins: Uint8Array<ArrayBuffer> | null = null;
@@ -168,10 +177,14 @@ export class Engine {
       // Local providers have no API concurrency limit (piper serializes on
       // its own hot thread; extra inflight just queues there harmlessly) —
       // widen the pipeline. Unknown/cloud stays at the free-tier-safe 2.
-      limits: () =>
-        this.activeProvider === "piper" || this.activeProvider === "windows"
+      // Between a plan change and the first synth-used, the plan head stands
+      // in for history — it's what the next call will actually use.
+      limits: () => {
+        const serving = this.activeProvider ?? this.plannedProvider;
+        return serving === "piper" || serving === "windows"
           ? { maxInflight: 4, prefetchDepth: 4 }
-          : { maxInflight: 2, prefetchDepth: 2 },
+          : { maxInflight: 2, prefetchDepth: 2 };
+      },
     });
     this.collapser = new BlurbCollapser((phrase) => this.enqueueBlurb(phrase));
   }
@@ -179,11 +192,11 @@ export class Engine {
   async boot(): Promise<void> {
     const io = this.deps.io;
     const payload = await io.getSettings();
-    this.applySettings(payload.settings);
+    this.applySettings(payload);
 
     for (const s of await io.listSessions()) this.sessions.set(s.sessionId, s);
 
-    this.unsubs.push(await io.onSettingsUpdated((p) => this.applySettings(p.settings)));
+    this.unsubs.push(await io.onSettingsUpdated((p) => this.applySettings(p)));
     this.unsubs.push(
       await io.onSessionsUpdated((list) => {
         for (const s of list) this.sessions.set(s.sessionId, s);
@@ -203,6 +216,16 @@ export class Engine {
           this.activeProvider = provider;
           this.deps.player.setProviderBoost(PROVIDER_BOOST[provider] ?? NO_BOOST);
           this.scheduleBroadcast();
+        }
+        // The plan channel can't see a breaker trip mid-walk (401 during
+        // synthesis) — what actually served is the truth then. Announce the
+        // landing spot once; the announcement itself synthesizes via the same
+        // fallback, so the next synth-used matches and the chain stops.
+        if (this.announcedProvider === undefined) {
+          this.announcedProvider = provider;
+        } else if (provider !== this.announcedProvider) {
+          this.announcedProvider = provider;
+          this.enqueueBlurb(`voice switched to ${spokenProviderName(provider)}`);
         }
       })
     );
@@ -237,14 +260,28 @@ export class Engine {
     this.deps.player.stop();
   }
 
-  private applySettings(s: Settings): void {
-    // A primary flip (manual or auto-switch) deserves a spoken heads-up —
-    // the listener already heard the voice change; name the reason.
-    const prevPrimary = this.settings?.providerOrder[0];
-    const nextPrimary = s.providerOrder[0];
-    if (prevPrimary && nextPrimary && prevPrimary !== nextPrimary && s.features.blurbs) {
-      const spoken = nextPrimary === "windows" ? "on-device" : nextPrimary;
-      this.enqueueBlurb(`voice switched to ${spoken}`);
+  private applySettings(p: SettingsPayload): void {
+    const s = p.settings;
+    // Rust's plan head is the truth about what speaks next — it moves on
+    // primary flips AND eligibility changes (key pasted, piper voice
+    // installed…), which a providerOrder diff can't see. Any landing spot the
+    // listener hasn't been told about deserves a spoken heads-up, in the NEW
+    // voice (audible proof the change took). Deliberately not gated on
+    // features.blurbs; mute alone silences it (queue.enqueue discards).
+    const planned = p.plannedProvider ?? undefined;
+    this.plannedProvider = planned;
+    if (this.announcedProvider === undefined) {
+      // First payload after boot: adopt silently — nothing changed yet.
+      this.announcedProvider = planned;
+    } else if (planned && planned !== this.announcedProvider) {
+      // activeProvider is history — the last voice that actually synthesized.
+      // Across a plan change that history says nothing about what speaks next,
+      // and the panel only surfaces it when it DISAGREES with the plan, so
+      // leaving it set reads as "your choice was ignored". Drop it and let
+      // the next synth-used state the truth.
+      this.activeProvider = undefined;
+      this.announcedProvider = planned;
+      this.enqueueBlurb(`voice switched to ${spokenProviderName(planned)}`);
     }
     this.settings = s;
     this.deps.applyTheme(s.theme);
@@ -392,12 +429,18 @@ export class Engine {
       const key = sessionId || "unknown";
       const existing = this.pendingAttention.get(key);
       if (existing) clearTimeout(existing);
+      const delay = this.settings?.attentionDelayMs ?? ATTENTION_ARM_MS;
+      if (delay <= 0) {
+        // No window at all — speak now, before any transcript event can disarm.
+        this.speakAttention(sessionId, text, false);
+        return;
+      }
       this.pendingAttention.set(
         key,
         setTimeout(() => {
           this.pendingAttention.delete(key);
           this.speakAttention(sessionId, text, false);
-        }, ATTENTION_ARM_MS)
+        }, delay)
       );
     } else {
       // "waiting for your input" fires after a long idle — speak immediately.

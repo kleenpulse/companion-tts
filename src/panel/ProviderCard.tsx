@@ -1,7 +1,8 @@
-import { X } from "lucide-react";
-import { AnimatePresence, motion } from "motion/react";
+import { Check, X } from "lucide-react";
+import { AnimatePresence, motion, useMotionValue, useSpring, useTransform } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import {
+  cancelPiperDownload,
   downloadPiperVoice,
   listPiperVoices,
   listWindowsVoices,
@@ -18,18 +19,38 @@ import type {
 import { usePanelStore } from "./panelStore";
 import { PillTabs } from "./PillTabs";
 
+/** Springs overshoot; the scrub must not. */
+const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
+
 export function ProviderCard() {
-  const { settings, providers, engineState, saveSettings, refreshProviders } = usePanelStore();
+  const { settings, providers, engineState, plannedProvider, saveSettings, refreshProviders } =
+    usePanelStore();
+  /** Rejection shake for a pill picked while its provider can't serve. */
+  const [shake, setShake] = useState<{ value: ProviderId; key: number } | null>(null);
   const [voices, setVoices] = useState<{ elevenlabs?: string; mistral?: string }>({});
   const [winVoices, setWinVoices] = useState<WindowsVoice[]>([]);
   const [piperVoices, setPiperVoices] = useState<PiperVoiceInfo[]>([]);
-  /** id → download fraction (0..1), or -1 for indeterminate. */
-  const [piperProgress, setPiperProgress] = useState<Record<string, number>>({});
   /** Voice picked from the dropdown that is still downloading — activated on "done". */
   const [piperPending, setPiperPending] = useState<string | null>(null);
   const piperPendingRef = useRef<string | null>(null);
+  /** Indeterminate until the model response reports a content-length. */
+  const [dlMode, setDlMode] = useState<"indeterminate" | "determinate">("indeterminate");
+  /** Past halfway, cancelling asks first — that's a lot of bytes to throw away. */
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  /** Why the last download died, so a failure isn't silent. */
+  const [dlError, setDlError] = useState<string | null>(null);
   /** X clicked once — the row asks before deleting the downloaded model. */
   const [confirmRemove, setConfirmRemove] = useState(false);
+
+  // Chunk events land in bursts (~128KB apart, irregularly spaced), so the raw
+  // fraction steps. A spring low-passes it: the bar and the percentage glide
+  // between samples and never re-render React to do it.
+  const dlRaw = useMotionValue(0);
+  const dlSmooth = useSpring(dlRaw, { stiffness: 140, damping: 26, mass: 0.4, restDelta: 0.0004 });
+  const dlPct = useTransform(dlSmooth, (v) => `${Math.round(clamp01(v) * 100)}%`);
+  // The scrub is a full-width gradient with a cover sliding off it, so the only
+  // animated property is a transform — motion writes those straight to the DOM.
+  const dlCover = useTransform(dlSmooth, (v) => 1 - clamp01(v));
 
   useEffect(() => {
     void listWindowsVoices().then(setWinVoices).catch(() => setWinVoices([]));
@@ -39,24 +60,34 @@ export function ProviderCard() {
   useEffect(() => {
     let unlisten: (() => void) | undefined;
     void onPiperDownload((ev) => {
+      const mine = ev.id === piperPendingRef.current;
       if (ev.phase === "downloading") {
-        setPiperProgress((p) => ({ ...p, [ev.id]: ev.total > 0 ? ev.received / ev.total : -1 }));
+        if (mine && ev.total > 0) {
+          setDlMode("determinate");
+          dlRaw.set(ev.received / ev.total);
+        }
       } else {
-        setPiperProgress((p) => {
-          const { [ev.id]: _done, ...rest } = p;
-          return rest;
-        });
         // A dropdown pick that triggered this download activates on success.
-        if (piperPendingRef.current === ev.id) {
+        if (mine) {
           piperPendingRef.current = null;
           setPiperPending(null);
+          setConfirmCancel(false);
           if (ev.phase === "done") {
+            // Land on full before the bar fades out — the last chunk event is
+            // always a hair short of 100%.
+            dlRaw.set(1);
             const s = usePanelStore.getState().settings;
             if (s) {
               void usePanelStore
                 .getState()
                 .saveSettings({ voices: { ...s.voices, piper: ev.id } });
             }
+          } else {
+            // Canceled or failed: the bar is leaving, so reset rather than glide.
+            dlRaw.jump(0);
+            dlSmooth.jump(0);
+            setDlMode("indeterminate");
+            if (ev.phase === "error") setDlError(ev.error ?? "download failed");
           }
         }
         void listPiperVoices().then(setPiperVoices).catch(() => {});
@@ -73,11 +104,22 @@ export function ProviderCard() {
   const primary = settings.providerOrder[0] ?? "elevenlabs";
   const anyFailed = providers.some((p) => p.permanentlyFailed);
   const active = engineState?.activeProvider;
+  // The pill row shows the voice that will actually speak (Rust's plan head).
+  // providerOrder keeps the user's intent — it is never rewritten, so a
+  // blocked choice restores itself the moment its missing piece arrives.
+  const effective = plannedProvider ?? primary;
   // hasKey mirrors the synth walk's eligibility predicate — for piper it means
   // "voice downloaded". Windows is always eligible, so it never banners.
   const primaryBlocked = providers.some((p) => p.id === primary && !p.hasKey);
+  const primaryFailed = providers.some((p) => p.id === primary && p.permanentlyFailed);
 
   const setPrimary = (p: ProviderId) => {
+    const status = providers.find((x) => x.id === p);
+    if (status && (!status.hasKey || status.permanentlyFailed)) {
+      // The pick still saves (it's the stored intent) but can't serve — the
+      // indicator stays on the fallback, so the shake carries the "no".
+      setShake((s) => ({ value: p, key: (s?.key ?? 0) + 1 }));
+    }
     // Order-preserving promote — mirrors Rust promote_provider semantics.
     const order = [p, ...settings.providerOrder.filter((x) => x !== p)];
     void saveSettings({ providerOrder: order });
@@ -97,12 +139,12 @@ export function ProviderCard() {
       <div className="flex w-full items-center justify-between px-3 py-2 font-display text-[10px] uppercase tracking-[0.15em] text-ink-mute">
         <span className="flex items-center gap-1.5">
           Voice
-          <span className="normal-case tracking-normal text-ink-mute/80">· {primary}</span>
-          {/* the voice actually speaking, whenever it diverges from the
-              selection — informational, not an error; degraded/unavailable
-              badges carry the danger signal */}
-          {active && active !== primary && (
-            <span className="rounded-sm border border-hairline bg-bench-700 px-1 text-[8px] normal-case tracking-normal text-ink-mute">
+          <span className="normal-case tracking-normal text-ink-mute/80">· {effective}</span>
+          {/* transient truth: what actually served last, when it disagrees
+              with the plan (a breaker tripped mid-walk) — accent because the
+              live voice outranks the stale plan until the next settings save */}
+          {active && active !== effective && (
+            <span className="rounded-sm border border-accent/40 bg-accent/10 px-1 text-[8px] normal-case tracking-normal text-accent">
               speaking: {active}
             </span>
           )}
@@ -120,7 +162,7 @@ export function ProviderCard() {
             </span>
             <PillTabs
               label="provider"
-              value={primary}
+              value={effective}
               options={[
                 { value: "elevenlabs", label: "ElevenLabs" },
                 { value: "mistral", label: "Mistral" },
@@ -128,12 +170,13 @@ export function ProviderCard() {
                 { value: "windows", label: "On-device" },
               ]}
               onChange={setPrimary}
+              shake={shake}
             />
           </div>
-          {/* Selection sticks even when unusable — this banner says why it's
-              silent and where the missing piece goes. */}
+          {/* Intent sticks even when unusable (the pill just won't land on
+              it) — this banner says why and where the missing piece goes. */}
           <AnimatePresence initial={false}>
-            {primaryBlocked && (
+            {(primaryBlocked || primaryFailed) && (
               <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: "auto", opacity: 1 }}
@@ -143,14 +186,16 @@ export function ProviderCard() {
               >
                 <div className="mt-1.5 rounded-md border border-hairline bg-raised px-2.5 py-1.5">
                   <span className="font-display text-[9px] uppercase tracking-[0.15em] text-accent">
-                    {primary} needs setup
+                    {primary} {primaryBlocked ? "needs setup" : "unavailable"}
                   </span>
                   <p className="mt-0.5 text-[10px] leading-snug text-ink-dim">
-                    {primary === "piper"
-                      ? "No voice downloaded — pick one from the Piper voice list below."
-                      : `No API key — add one under General, or set the ${
-                          primary === "elevenlabs" ? "ELEVEN_LABS" : "MISTRAL_API_KEY"
-                        } env var. Speech falls back to the next available voice meanwhile.`}
+                    {primaryBlocked
+                      ? primary === "piper"
+                        ? "No voice downloaded — pick one from the Piper voice list below."
+                        : `No API key — add one under General, or set the ${
+                            primary === "elevenlabs" ? "ELEVEN_LABS" : "MISTRAL_API_KEY"
+                          } env var. Speaking with ${effective} meanwhile.`
+                      : `The API rejected the key — re-save it under General to retry. Speaking with ${effective} meanwhile.`}
                   </p>
                 </div>
               </motion.div>
@@ -171,6 +216,9 @@ export function ProviderCard() {
                   defaultValue={settings.voices[id]}
                   onChange={(e) => setVoices((v) => ({ ...v, [id]: e.target.value }))}
                   onBlur={() => commitVoice(id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur();
+                  }}
                   spellCheck={false}
                   className="mt-0.5 w-full rounded-md border border-hairline bg-surface px-1.5 py-1 font-mono text-[10px] text-ink-dim outline-none transition-colors duration-200 focus:border-accent/40"
                 />
@@ -206,9 +254,13 @@ export function ProviderCard() {
                 </span>
                 {piperPending && (
                   <span className="font-mono text-[9px] normal-case tracking-normal text-accent">
-                    {(piperProgress[piperPending] ?? -1) >= 0
-                      ? `downloading ${Math.round((piperProgress[piperPending] ?? 0) * 100)}%`
-                      : "downloading…"}
+                    {dlMode === "determinate" ? (
+                      <>
+                        downloading <motion.span>{dlPct}</motion.span>
+                      </>
+                    ) : (
+                      "downloading…"
+                    )}
                   </span>
                 )}
               </span>
@@ -218,6 +270,7 @@ export function ProviderCard() {
                   disabled={!!piperPending}
                   onChange={(e) => {
                     setConfirmRemove(false);
+                    setDlError(null);
                     const id = e.target.value;
                     if (!id) {
                       void saveSettings({ voices: { ...settings.voices, piper: "" } });
@@ -232,7 +285,10 @@ export function ProviderCard() {
                     // Not on disk yet: download first, activate on "done".
                     piperPendingRef.current = id;
                     setPiperPending(id);
-                    setPiperProgress((p) => ({ ...p, [id]: -1 }));
+                    setDlMode("indeterminate");
+                    setConfirmCancel(false);
+                    dlRaw.jump(0);
+                    dlSmooth.jump(0);
                     void downloadPiperVoice(id).catch(() => {
                       piperPendingRef.current = null;
                       setPiperPending(null);
@@ -242,12 +298,54 @@ export function ProviderCard() {
                 >
                   <option value="">None</option>
                   {piperVoices.map((v) => (
-                    <option key={v.id} value={v.id}>
+                    // Chromium honors color on <option>; the accent var flips
+                    // with the theme, so installed reads on either popup bg.
+                    <option
+                      key={v.id}
+                      value={v.id}
+                      className={v.installed ? "text-accent" : "text-ink-mute"}
+                    >
                       {v.label} · {v.language.replace("_", "-")}
-                      {v.installed ? "" : ` · get ~${v.sizeMb} MB`}
+                      {v.installed ? " · on disk" : ` · get ~${v.sizeMb} MB`}
                     </option>
                   ))}
                 </select>
+                {piperPending &&
+                  (confirmCancel ? (
+                    // Past halfway: the X becomes a question, and these answer it.
+                    <>
+                      <button
+                        onClick={() => void cancelPiperDownload(piperPending)}
+                        title="Yes, cancel the download"
+                        aria-label="Confirm cancelling the download"
+                        className="shrink-0 rounded-md border border-danger/40 bg-danger/15 p-1 text-danger transition-colors duration-200 hover:bg-danger/25"
+                      >
+                        <Check size={11} strokeWidth={2} />
+                      </button>
+                      <button
+                        onClick={() => setConfirmCancel(false)}
+                        title="Keep downloading"
+                        aria-label="Keep downloading"
+                        className="shrink-0 rounded-md border border-hairline bg-bench-700 p-1 text-ink-mute transition-colors duration-200 hover:text-ink"
+                      >
+                        <X size={11} strokeWidth={1.75} />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        // Under half (or size still unknown) there's little to
+                        // lose — stop immediately instead of nagging.
+                        if (dlRaw.get() > 0.5) setConfirmCancel(true);
+                        else void cancelPiperDownload(piperPending);
+                      }}
+                      title="Cancel download"
+                      aria-label="Cancel Piper voice download"
+                      className="shrink-0 rounded-md border border-hairline bg-bench-700 p-1 text-ink-mute transition-colors duration-200 hover:text-danger"
+                    >
+                      <X size={11} strokeWidth={1.75} />
+                    </button>
+                  ))}
                 {!piperPending &&
                   !confirmRemove &&
                   piperVoices.find((v) => v.id === settings.voices.piper)?.installed && (
@@ -290,15 +388,57 @@ export function ProviderCard() {
                   </button>
                 </div>
               )}
-              {piperPending && (piperProgress[piperPending] ?? -1) >= 0 && (
-                <span className="mt-1 block h-0.5 overflow-hidden rounded-full bg-hairline">
-                  <span
-                    className="block h-full rounded-full bg-accent transition-[width] duration-300"
-                    style={{
-                      width: `${Math.round((piperProgress[piperPending] ?? 0) * 100)}%`,
-                    }}
-                  />
-                </span>
+              <AnimatePresence>
+                {piperPending && (
+                  <motion.span
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className="relative mt-1 block h-1 overflow-hidden rounded-full bg-hairline"
+                  >
+                    {dlMode === "determinate" ? (
+                      // The triad is painted across the whole track and never
+                      // moves — the cover retreats off it. So the leading edge
+                      // walks violet→magenta→cyan, and the one animated
+                      // property is a transform.
+                      <>
+                        <span className="grainient-scrub absolute inset-0 block" />
+                        <motion.span
+                          className="grainient-sheen absolute inset-y-0 left-0 block w-1/4"
+                          animate={{ x: ["-120%", "440%"] }}
+                          transition={{ duration: 1.6, repeat: Infinity, ease: "linear" }}
+                        />
+                        <motion.span
+                          className="absolute inset-0 block origin-right bg-hairline"
+                          style={{ scaleX: dlCover }}
+                        />
+                      </>
+                    ) : (
+                      // No content-length yet (the tiny config file downloads
+                      // first) — sweep rather than sit at a dead zero.
+                      <motion.span
+                        className="grainient-scrub absolute inset-y-0 left-0 block w-2/5 rounded-full"
+                        animate={{ x: ["-105%", "255%"] }}
+                        transition={{ duration: 1.2, repeat: Infinity, ease: "easeInOut" }}
+                      />
+                    )}
+                  </motion.span>
+                )}
+              </AnimatePresence>
+              {dlError && !piperPending && (
+                <div className="mt-1 flex items-center gap-1.5 rounded-md border border-danger/40 bg-danger/10 px-1.5 py-1">
+                  <span className="min-w-0 flex-1 truncate text-[10px] leading-snug text-danger">
+                    Download failed — {dlError}
+                  </span>
+                  <button
+                    onClick={() => setDlError(null)}
+                    aria-label="Dismiss download error"
+                    className="shrink-0 text-danger/70 transition-colors duration-200 hover:text-danger"
+                  >
+                    <X size={11} strokeWidth={1.75} />
+                  </button>
+                </div>
               )}
             </label>
           </div>

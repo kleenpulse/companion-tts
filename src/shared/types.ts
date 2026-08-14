@@ -37,6 +37,10 @@ export interface Settings {
   typewriter: boolean;
   /** Double-click-a-row re-speak behavior. */
   replayMode: ReplayMode;
+  /** Grace before a permission alert is *spoken*, ms — the ping is always
+   * instant, so 0 means the sentence follows it immediately. One of
+   * `ATTENTION_DELAY_STEPS` (settings.rs snaps anything else). */
+  attentionDelayMs: number;
   theme: Theme;
   /** Last version whose What's New was acknowledged; "" = never seeded. */
   lastSeenVersion: string;
@@ -66,6 +70,9 @@ export interface EnvKeys {
 export interface SettingsPayload {
   settings: Settings;
   envKeys: EnvKeys;
+  /** Head of the Rust synth walk — the provider the next utterance would use.
+   * null when nothing is eligible (non-Windows with nothing configured). */
+  plannedProvider?: ProviderId | null;
 }
 
 export interface SessionInfo {
@@ -245,6 +252,6 @@ export interface PiperDownloadEvent {
   id: string;
   received: number;
   total: number;
-  phase: "downloading" | "done" | "error";
+  phase: "downloading" | "done" | "canceled" | "error";
   error?: string;
 }

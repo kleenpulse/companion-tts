@@ -10,6 +10,16 @@ import type { CloudProviderId, ReplayMode } from "../shared/types";
 import { usePanelStore } from "./panelStore";
 import { PillTabs } from "./PillTabs";
 
+/** How long a permission alert waits before it *speaks* — the ping is always
+ * instant. Mirrors ATTENTION_DELAY_STEPS in settings.rs, which snaps any value
+ * not on this list so exactly one pill is ever lit. */
+const ATTENTION_DELAYS = [
+  { value: "0", label: "Instant" },
+  { value: "1500", label: "1.5s" },
+  { value: "3000", label: "3s" },
+  { value: "5000", label: "5s" },
+] as const;
+
 export function SettingsSection() {
   const { settings, envKeys, saveSettings, refreshProviders } = usePanelStore();
   const [draft, setDraft] = useState<{ elevenlabs?: string; mistral?: string }>({});
@@ -81,6 +91,9 @@ export function SettingsSection() {
                 defaultValue={settings.keys[id]}
                 onChange={(e) => setDraft((d) => ({ ...d, [id]: e.target.value }))}
                 onBlur={() => commitKey(id)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") e.currentTarget.blur();
+                }}
                 spellCheck={false}
                 className="mt-0.5 w-full rounded-md border border-hairline bg-surface px-1.5 py-1 font-mono text-[10px] text-ink-dim outline-none transition-colors duration-200 focus:border-accent/40"
               />
@@ -197,6 +210,17 @@ export function SettingsSection() {
               className="mt-1 w-full"
             />
           </label>
+          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 rounded-md px-0.5 py-0.5">
+            <span className="font-display text-[10px] uppercase tracking-[0.15em] text-ink-mute">
+              Alert delay
+            </span>
+            <PillTabs
+              label="alert delay"
+              value={String(settings.attentionDelayMs ?? 1500)}
+              options={ATTENTION_DELAYS}
+              onChange={(v) => void saveSettings({ attentionDelayMs: Number(v) })}
+            />
+          </div>
           <div className="flex items-center justify-between rounded-md px-0.5 py-0.5">
             <span className="font-display text-[10px] uppercase tracking-[0.15em] text-ink-mute">
               Attention hooks

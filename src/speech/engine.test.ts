@@ -111,10 +111,126 @@ describe("voice-switch announcement", () => {
         providerOrder: ["mistral", "elevenlabs", "piper", "windows"],
       }),
       envKeys: { elevenlabs: false, mistral: false },
+      plannedProvider: "mistral",
     });
     await h.settle();
 
     expect(h.followed()).toBeUndefined();
+    expect(h.spokenTexts()).toContain("voice switched to mistral.");
+  });
+
+  it("forgets the last-used voice on a primary flip", async () => {
+    h = await bootHarness({
+      settings: { providerOrder: ["piper", "elevenlabs", "mistral", "windows"] },
+    });
+
+    // Mistral served last — the panel's "speaking: X" chip reads this.
+    h.io.push.synthUsed("mistral");
+    await h.settle();
+    expect(h.state().activeProvider).toBe("mistral");
+
+    // Pick a new primary: the old voice is history, not a live fallback.
+    h.io.push.settingsUpdated({
+      settings: defaultTestSettings({
+        providerOrder: ["elevenlabs", "mistral", "piper", "windows"],
+      }),
+      envKeys: { elevenlabs: false, mistral: false },
+      plannedProvider: "elevenlabs",
+    });
+    await h.settle();
+    expect(h.state().activeProvider).toBeUndefined();
+
+    // …and it comes back the moment something actually falls back again.
+    h.io.push.synthUsed("mistral");
+    await h.settle();
+    expect(h.state().activeProvider).toBe("mistral");
+  });
+
+  it("announces when a pasted key changes the plan head without a primary flip", async () => {
+    h = await bootHarness();
+    h.io.push.synthUsed("windows");
+    await h.settle();
+    expect(h.state().activeProvider).toBe("windows");
+
+    // Same providerOrder, new key — only the plan head moves.
+    h.io.push.settingsUpdated({
+      settings: defaultTestSettings({ keys: { elevenlabs: "sk_new", mistral: "" } }),
+      envKeys: { elevenlabs: false, mistral: false },
+      plannedProvider: "elevenlabs",
+    });
+    await h.settle();
+
+    expect(h.spokenTexts()).toContain("voice switched to elevenlabs.");
+    expect(h.state().activeProvider).toBeUndefined();
+  });
+
+  it("does not announce at boot", async () => {
+    h = await bootHarness();
+    await h.settle();
+    expect(h.spokenTexts()).toEqual([]);
+  });
+
+  it("stays silent when an unrelated save leaves the plan head unchanged", async () => {
+    h = await bootHarness();
+    h.io.push.settingsUpdated({
+      settings: defaultTestSettings({ fabScale: 2 }),
+      envKeys: { elevenlabs: false, mistral: false },
+      plannedProvider: "windows",
+    });
+    await h.settle();
+    expect(h.spokenTexts()).toEqual([]);
+  });
+
+  it("announces the actual fallback when synthesis lands elsewhere, once", async () => {
+    h = await bootHarness();
+    h.io.push.settingsUpdated({
+      settings: defaultTestSettings({ keys: { elevenlabs: "sk_bad", mistral: "" } }),
+      envKeys: { elevenlabs: false, mistral: false },
+      plannedProvider: "elevenlabs",
+    });
+    await h.settle();
+    expect(h.spokenTexts()).toContain("voice switched to elevenlabs.");
+
+    // The announcement itself 401s Rust-side; windows ends up serving it.
+    h.io.push.synthUsed("windows");
+    await h.settle();
+    const fallbackCount = () =>
+      h!.spokenTexts().filter((t) => t === "voice switched to on-device.").length;
+    expect(fallbackCount()).toBe(1);
+
+    // Repeats of the same landing spot stay silent.
+    h.io.push.synthUsed("windows");
+    await h.settle();
+    expect(fallbackCount()).toBe(1);
+  });
+
+  it("is silenced by mute", async () => {
+    h = await bootHarness();
+    h.cmd({ cmd: "toggle-mute" });
+    h.io.push.settingsUpdated({
+      settings: defaultTestSettings(),
+      envKeys: { elevenlabs: false, mistral: false },
+      plannedProvider: "piper",
+    });
+    await h.settle();
+    expect(h.spokenTexts()).toEqual([]);
+  });
+
+  it("announces even with tool blurbs toggled off", async () => {
+    const noBlurbs = {
+      prose: true,
+      blurbs: false,
+      errors: true,
+      chime: true,
+      attention: true,
+    };
+    h = await bootHarness({ settings: { features: noBlurbs } });
+    h.io.push.settingsUpdated({
+      settings: defaultTestSettings({ features: noBlurbs }),
+      envKeys: { elevenlabs: false, mistral: false },
+      plannedProvider: "mistral",
+    });
+    await h.settle();
     expect(h.spokenTexts()).toContain("voice switched to mistral.");
   });
 });
@@ -214,6 +330,31 @@ describe("attention grace window", () => {
     await h.advance(0);
 
     expect(h.player.attentionPings).toBe(1);
+  });
+
+  it("honors a longer window from settings", async () => {
+    h = await bootHarness({ settings: { attentionDelayMs: 5000 } });
+
+    h.attention("A", "Claude needs your permission to use Bash");
+    await h.advance(1500);
+    await h.settle();
+    expect(h.player.attentionPings).toBe(1); // the cue never waits
+    expect(h.state().queue.some((u) => u.kind === "attention")).toBe(false);
+
+    await h.advance(3500);
+    await h.settle();
+    expect(h.state().queue.some((u) => u.kind === "attention")).toBe(true);
+  });
+
+  it("Instant: speaks before a transcript event can disarm it", async () => {
+    h = await bootHarness({ settings: { attentionDelayMs: 0 } });
+
+    h.attention("A", "Claude needs your permission to use Bash");
+    h.text("A", "the tool result comes straight back"); // would disarm a window
+    await h.settle();
+
+    expect(h.player.attentionPings).toBe(1);
+    expect(h.spokenTexts()).toContain("Claude needs your approval to run a command.");
   });
 
   it("muted: no ping, no spoken alert", async () => {

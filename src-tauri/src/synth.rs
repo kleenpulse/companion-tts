@@ -3,7 +3,7 @@ use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 const ELEVEN_MODEL: &str = "eleven_flash_v2_5";
 const ELEVEN_FORMAT: &str = "mp3_44100_128";
@@ -246,6 +246,21 @@ fn plan(
         .filter_map(|id| provider_by_id(id))
         .filter(|p| (p.eligible)(ctx))
         .collect()
+}
+
+/// Head of the current walk — the provider the next synthesis would use.
+/// Callers pass MERGED settings (env keys count toward eligibility, exactly
+/// as synthesize sees them). Breaker state may not be managed yet during
+/// setup — treat that as "nothing tripped".
+pub fn planned_provider(app: &AppHandle, s: &crate::settings::Settings) -> Option<String> {
+    let ctx = eligibility_ctx(app, s);
+    let failed = match app.try_state::<SynthState>() {
+        Some(state) => state.permanently_failed.lock().unwrap().clone(),
+        None => HashSet::new(),
+    };
+    plan(&s.provider_order, &failed, &ctx)
+        .first()
+        .map(|p| p.id.to_string())
 }
 
 /// The auto-switch decision, pure for tests. Promote the serving fallback

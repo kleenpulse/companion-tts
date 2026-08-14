@@ -10,6 +10,78 @@ commits, and tags.
 
 ## [Unreleased]
 
+### Added
+
+- Every voice change is announced aloud — in the *new* voice — unless the app
+  is muted. Paste a working API key and you immediately hear "voice switched
+  to elevenlabs" spoken by ElevenLabs itself: the announcement doubles as
+  proof the key works. If a key is wrong, you hear the attempt fail over
+  ("voice switched to on-device") instead of discovering it in a badge. The
+  Tool blurbs toggle no longer silences these — only mute does.
+- Alert delay is now a setting: a pill selector under General picks how long a
+  permission alert waits before it *speaks* — Instant, 1.5s, 3s, or 5s. The ping
+  still fires the moment the prompt appears in every case; the delay only holds
+  the sentence back, and any transcript activity inside the window cancels it.
+  Pick Instant to always hear the full alert, or 5s to be told only about the
+  prompts you actually left sitting.
+- Piper voice downloads can be canceled. An X sits beside the voice picker
+  while a model transfers; under halfway it stops the download on the spot,
+  and past halfway it asks first with an inline ✓ / ✗ — 30-odd megabytes in is
+  a bad place for a misclick. Either way the partial file is deleted, so a
+  canceled download leaves nothing behind.
+
+### Changed
+
+- The Primary pill row now shows the voice that will actually speak. Selecting
+  a provider that can't serve (no key, no downloaded voice, rejected key) saves
+  your choice but the pill visibly lands on the fallback, the picked pill
+  shakes, and a banner explains what's missing — no more ElevenLabs highlighted
+  while on-device does the talking. Your selection is remembered, never
+  rewritten: the pill jumps back the moment the missing piece arrives. The
+  footer's voice label follows the same truth.
+- API key and voice-id fields commit on Enter as well as on focus loss.
+- The Piper voice list tells downloaded voices apart at a glance: installed
+  ones are accented and tagged "on disk", undownloaded ones are muted with
+  their download size.
+- The Piper voice download bar now scrubs smoothly and wears the signature
+  magenta→violet→cyan gradient. It used to lurch: bytes were reported every
+  512KB and the bar stepped between them. Progress is now sampled four times
+  finer and a spring carries the fill and the percentage between samples, with
+  a travelling highlight so a slow link still reads as moving. The gradient is
+  anchored to the whole track, so the leading edge walks violet→magenta→cyan
+  as the download advances. Before the download's size is known the bar sweeps
+  instead of sitting at a dead zero.
+
+### Fixed
+
+- Pasting an API key now takes effect immediately. The panel used to keep
+  showing the fallback as active until the next utterance happened to speak;
+  now the switch is spoken and displayed the moment the key lands.
+- A tripped provider (rejected key) is no longer silently resurrected by
+  unrelated settings saves — only changing a key or re-picking the primary
+  retries it, so a bad key can't cause a failed attempt on every fab-scale
+  drag or theme flip.
+- Settings can no longer be lost to a torn write. settings.json was overwritten
+  in place from several threads at once (window moves, the monthly meter, panel
+  edits), so a crash, shutdown, or racing writer mid-save could truncate it —
+  and the next launch would read the wreckage as "no settings", silently
+  resetting API keys, voice choices, and the FAB size, then burying the
+  evidence on its first save. Saves now write to a temp file and rename into
+  place (the same doctrine the audio cache always used), and a settings.json
+  that fails to parse is quarantined to `settings.json.corrupt` for recovery
+  instead of being replaced with defaults.
+- A failed Piper voice download no longer fails in silence. It used to reset the
+  row with no explanation and leave a half-written `.part` file in app-data that
+  nothing ever cleaned up — invisible from the UI, and dead weight on disk. The
+  reason now appears under the picker, and the partial is deleted.
+- The "speaking: X" chip no longer keeps naming the previous voice after you
+  pick a new primary. The chip reports the provider that last actually
+  synthesized, and nothing cleared it on a switch — so it sat there naming the
+  old voice until something spoke again, and because the chip only appears when
+  it disagrees with your selection, it read as though the switch hadn't taken.
+  It now clears on a primary change and returns the moment a real fallback
+  happens.
+
 ## [0.5.2] - 2026-08-13
 
 ### Fixed

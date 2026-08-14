@@ -3,7 +3,7 @@ import { usePanelStore } from "./panelStore";
 import { useViewStore } from "./viewStore";
 
 export function Footer() {
-  const { settings, watcherStatus, engineState, appVersion } = usePanelStore();
+  const { settings, watcherStatus, engineState, appVersion, plannedProvider } = usePanelStore();
   const openSettings = useViewStore((s) => s.openSettings);
   const openChangelog = useViewStore((s) => s.openChangelog);
   const chars = settings?.monthly.chars ?? 0;
@@ -29,8 +29,9 @@ export function Footer() {
           ? "watcher dead"
           : "starting";
 
-  // Live: the provider actually speaking; falls back to the configured primary.
-  const voiceMode = engineState?.activeProvider ?? settings?.providerOrder[0] ?? "—";
+  // Live: the provider actually speaking → the plan head → the stored intent.
+  const intent = settings?.providerOrder[0];
+  const voiceMode = engineState?.activeProvider ?? plannedProvider ?? intent ?? "—";
 
   return (
     <footer className="grid grid-cols-[1fr_auto_1fr] items-center border-t border-hairline px-3 py-2">
@@ -45,7 +46,11 @@ export function Footer() {
       </span>
       <button
         onClick={() => openSettings("voice")}
-        title="Voice settings"
+        title={
+          intent && voiceMode !== intent
+            ? `${intent} selected — speaking ${voiceMode}`
+            : "Voice settings"
+        }
         className="justify-self-center whitespace-nowrap font-display text-[9px] uppercase tracking-[0.15em] text-ink-mute transition-colors duration-200 hover:text-ink"
       >
         voice: {voiceMode}

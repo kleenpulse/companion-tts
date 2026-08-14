@@ -34,6 +34,7 @@ export function defaultTestSettings(over?: Partial<Settings>): Settings {
     visualizerStyle: "strands",
     typewriter: true,
     replayMode: "next",
+    attentionDelayMs: 1500,
     theme: "dark",
     lastSeenVersion: "",
     fabScale: 1,
@@ -64,7 +65,8 @@ class FakeIO implements EngineIO {
 
   constructor(
     private settings: Settings,
-    private sessions: SessionInfo[]
+    private sessions: SessionInfo[],
+    private plannedProvider: ProviderId | null = "windows"
   ) {}
 
   /** Test steering wheel: fire inbound events exactly as the bus would. */
@@ -82,6 +84,9 @@ class FakeIO implements EngineIO {
     return Promise.resolve({
       settings: this.settings,
       envKeys: { elevenlabs: false, mistral: false },
+      // Tests supply plan heads explicitly per push — the testkit must NOT
+      // emulate Rust's plan(); this is only the boot value.
+      plannedProvider: this.plannedProvider,
     });
   }
   listSessions(): Promise<SessionInfo[]> {
@@ -205,12 +210,18 @@ export interface EngineHarness {
 export async function bootHarness(opts?: {
   settings?: Partial<Settings>;
   sessions?: SessionInfo[];
+  /** Boot-time plan head (default "windows" — the keyless default's real head). */
+  plannedProvider?: ProviderId | null;
 }): Promise<EngineHarness> {
   vi.useFakeTimers({
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
   });
 
-  const io = new FakeIO(defaultTestSettings(opts?.settings), opts?.sessions ?? []);
+  const io = new FakeIO(
+    defaultTestSettings(opts?.settings),
+    opts?.sessions ?? [],
+    opts?.plannedProvider === undefined ? "windows" : opts.plannedProvider
+  );
   const player = new FakePlayer();
   const mirrors: FabMirror[] = [];
   const engine = new Engine({

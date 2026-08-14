@@ -151,6 +151,11 @@ export function downloadPiperVoice(id: string): Promise<void> {
   return invoke("download_piper_voice", { id });
 }
 
+/** Abort an in-flight download; the terminal "canceled" event arrives via onPiperDownload. */
+export function cancelPiperDownload(id: string): Promise<void> {
+  return invoke("cancel_piper_download", { id });
+}
+
 /** Delete a downloaded Piper voice's files (clears selection if it was chosen). */
 export function removePiperVoice(id: string): Promise<void> {
   return invoke("remove_piper_voice", { id });

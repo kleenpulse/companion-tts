@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
@@ -147,6 +147,10 @@ pub struct Settings {
     pub visualizer_style: String, // "waves" | "strands"
     pub typewriter: bool,         // feed reveals spoken row in sync with playback
     pub replay_mode: String,      // "next" | "interrupt" | "interrupt-clear" | "off"
+    /// Grace before a permission alert is *spoken*, ms. The ping is always
+    /// instant; this only holds the sentence back, so 0 = speak immediately.
+    /// Snapped to `ATTENTION_DELAY_STEPS` (the panel renders one pill each).
+    pub attention_delay_ms: u32,
     pub theme: String,            // "dark" | "light" | "system"
     pub last_seen_version: String, // last What's New acknowledged; "" = never seeded
     pub fab_scale: f64,           // 0.75..=3.0, dial + window scale together
@@ -178,6 +182,7 @@ impl Default for Settings {
             visualizer_style: "strands".into(),
             typewriter: false,
             replay_mode: "next".into(),
+            attention_delay_ms: 1500,
             theme: "dark".into(),
             last_seen_version: String::new(),
             fab_scale: 1.0,
@@ -204,6 +209,9 @@ pub struct EnvKeys {
 pub struct SettingsPayload {
     pub settings: Settings,
     pub env_keys: EnvKeys,
+    /// Head of the synth walk — the provider the next utterance would use.
+    /// None when nothing is eligible (non-Windows with nothing configured).
+    pub planned_provider: Option<String>,
 }
 
 pub struct SettingsState(pub Mutex<Settings>);
@@ -219,16 +227,33 @@ fn settings_path(app: &AppHandle) -> PathBuf {
 }
 
 pub fn load(app: &AppHandle) -> Settings {
-    let path = settings_path(app);
-    let mut settings: Settings = match std::fs::read_to_string(&path) {
-        // serde_json rejects a UTF-8 BOM outright — and a BOM'd settings.json
-        // (hand-edited, PowerShell'd) silently nuking every preference to
-        // defaults is far too harsh a punishment. Strip it.
-        Ok(raw) => serde_json::from_str(raw.trim_start_matches('\u{feff}')).unwrap_or_default(),
-        Err(_) => Settings::default(),
-    };
+    let mut settings = read_settings_file(&settings_path(app));
     sanitize(&mut settings);
     settings
+}
+
+/// Missing file = quiet first run. A file that exists but won't parse is
+/// quarantined to `settings.json.corrupt` before defaults take over — it may
+/// hold the only copy of the user's API keys, and the next save would
+/// otherwise bury the evidence under a factory-fresh file.
+fn read_settings_file(path: &Path) -> Settings {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(_) => return Settings::default(),
+    };
+    // serde_json rejects a UTF-8 BOM outright — and a BOM'd settings.json
+    // (hand-edited, PowerShell'd) silently nuking every preference to
+    // defaults is far too harsh a punishment. Strip it.
+    match serde_json::from_str(raw.trim_start_matches('\u{feff}')) {
+        Ok(settings) => settings,
+        Err(e) => {
+            eprintln!(
+                "[settings] settings.json unreadable ({e}) — quarantined to settings.json.corrupt, starting from defaults"
+            );
+            let _ = std::fs::rename(path, path.with_extension("json.corrupt"));
+            Settings::default()
+        }
+    }
 }
 
 /// Every invariant a Settings value must satisfy, enforced at the seam:
@@ -248,6 +273,19 @@ pub fn sanitize(settings: &mut Settings) {
     ) {
         settings.replay_mode = "next".into();
     }
+    settings.attention_delay_ms = snap_attention_delay(settings.attention_delay_ms);
+}
+
+/// Selectable grace windows, in ms — one pill each in the panel.
+pub const ATTENTION_DELAY_STEPS: [u32; 4] = [0, 1500, 3000, 5000];
+
+/// A hand-edited or future value snaps to the nearest step, so the pill row
+/// always has exactly one selection.
+fn snap_attention_delay(ms: u32) -> u32 {
+    ATTENTION_DELAY_STEPS
+        .into_iter()
+        .min_by_key(|step| step.abs_diff(ms))
+        .unwrap_or(1500)
 }
 
 /// Migration: installs predating the local providers gain them without their
@@ -264,13 +302,32 @@ pub fn ensure_local_providers(order: &mut Vec<String>) {
 }
 
 pub fn save(app: &AppHandle, settings: &Settings) {
-    let path = settings_path(app);
-    if let Some(parent) = path.parent() {
-        let _ = std::fs::create_dir_all(parent);
+    if let Err(e) = write_settings_file(&settings_path(app), settings) {
+        eprintln!("[settings] save failed: {e}");
     }
-    if let Ok(raw) = serde_json::to_string_pretty(settings) {
-        let _ = std::fs::write(&path, raw);
-    }
+}
+
+/// Write-then-rename, the audio_cache doctrine: settings.json is replaced
+/// whole or not at all. A raw overwrite truncates first, and saves come from
+/// several threads (window moves, monthly chars, panel edits) — a crash or a
+/// racing writer mid-truncate could leave torn JSON that read back as a
+/// factory reset. Unique .part suffix keeps concurrent saves off each other's
+/// temp file; every rename lands a complete snapshot, last one wins.
+fn write_settings_file(path: &Path, settings: &Settings) -> Result<(), String> {
+    let parent = path.parent().ok_or("no parent dir")?;
+    std::fs::create_dir_all(parent).map_err(|e| format!("mkdir: {e}"))?;
+    let raw = serde_json::to_string_pretty(settings).map_err(|e| format!("serialize: {e}"))?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0);
+    let part = path.with_extension(format!("json.part-{nanos}"));
+    std::fs::write(&part, raw).map_err(|e| format!("write: {e}"))?;
+    // std::fs::rename replaces an existing file on Windows (MOVEFILE_REPLACE_EXISTING).
+    std::fs::rename(&part, path).map_err(|e| {
+        let _ = std::fs::remove_file(&part);
+        format!("rename: {e}")
+    })
 }
 
 /// Overlay env-var keys on top of stored keys (env fills blanks, never overrides).
@@ -298,9 +355,10 @@ pub fn merged(settings: &Settings) -> (Settings, EnvKeys) {
 
 pub fn payload(app: &AppHandle) -> SettingsPayload {
     let state = app.state::<SettingsState>();
-    let guard = state.0.lock().unwrap();
-    let (settings, env_keys) = merged(&guard);
-    SettingsPayload { settings, env_keys }
+    // Snapshot then drop the guard — planned_provider locks SynthState and
+    // touches the filesystem (piper voice check); never under this mutex.
+    let snapshot = state.0.lock().unwrap().clone();
+    payload_from(app, &snapshot)
 }
 
 fn now_ms() -> u64 {
@@ -397,7 +455,7 @@ pub fn set_piper_voice_if_empty(app: &AppHandle, id: &str) {
         guard.clone()
     };
     save(app, &snapshot);
-    let _ = app.emit("settings-updated", payload_from(&snapshot));
+    let _ = app.emit("settings-updated", payload_from(app, &snapshot));
 }
 
 /// Removing the selected Piper voice clears the selection (provider goes dormant).
@@ -412,7 +470,7 @@ pub fn clear_piper_voice_if(app: &AppHandle, id: &str) {
         guard.clone()
     };
     save(app, &snapshot);
-    let _ = app.emit("settings-updated", payload_from(&snapshot));
+    let _ = app.emit("settings-updated", payload_from(app, &snapshot));
 }
 
 /// Auto-switcher: move a proven-working provider to the front of the order so
@@ -430,7 +488,7 @@ pub fn promote_provider(app: &AppHandle, provider: &str) {
     };
     save(app, &snapshot);
     eprintln!("[synth] auto-switched primary voice to {provider}");
-    let _ = app.emit("settings-updated", payload_from(&snapshot));
+    let _ = app.emit("settings-updated", payload_from(app, &snapshot));
 }
 
 /// Called by synth after each successful billed synthesis; rolls the month
@@ -444,7 +502,7 @@ pub fn add_chars(app: &AppHandle, provider: &str, n: u64) {
         guard.clone()
     };
     save(app, &snapshot);
-    let _ = app.emit("settings-updated", payload_from(&snapshot));
+    let _ = app.emit("settings-updated", payload_from(app, &snapshot));
 }
 
 fn current_month() -> String {
@@ -468,9 +526,10 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     (if m <= 2 { y + 1 } else { y }, m, d)
 }
 
-fn payload_from(settings: &Settings) -> SettingsPayload {
+fn payload_from(app: &AppHandle, settings: &Settings) -> SettingsPayload {
     let (merged_settings, env_keys) = merged(settings);
-    SettingsPayload { settings: merged_settings, env_keys }
+    let planned_provider = crate::synth::planned_provider(app, &merged_settings);
+    SettingsPayload { settings: merged_settings, env_keys, planned_provider }
 }
 
 #[tauri::command]
@@ -518,6 +577,25 @@ mod tests {
         let m: Monthly = serde_json::from_str(r#"{"month":"2026-06","chars":1234}"#).unwrap();
         assert_eq!(m.chars, 1234);
         assert!(m.by_provider.is_empty());
+    }
+
+    #[test]
+    fn breaker_resets_only_on_key_or_order_change() {
+        let prev = Settings::default();
+
+        let mut key_change = prev.clone();
+        key_change.keys.elevenlabs = "sk_new".into();
+        assert!(breaker_should_reset(&prev, &key_change));
+
+        let mut order_change = prev.clone();
+        order_change.provider_order.rotate_left(1);
+        assert!(breaker_should_reset(&prev, &order_change));
+
+        let mut unrelated = prev.clone();
+        unrelated.fab_scale = 2.0;
+        unrelated.theme = "light".into();
+        unrelated.voices.piper = "lessac".into();
+        assert!(!breaker_should_reset(&prev, &unrelated));
     }
 
     #[test]
@@ -616,11 +694,103 @@ mod tests {
     }
 
     #[test]
+    fn old_settings_json_lacking_attention_delay_defaults_to_1500() {
+        let raw = r#"{"voices":{"elevenlabs":"x","mistral":"y"}}"#;
+        let s: Settings = serde_json::from_str(raw).unwrap();
+        assert_eq!(s.attention_delay_ms, 1500);
+    }
+
+    #[test]
+    fn sanitize_snaps_attention_delay_to_a_step() {
+        let mut s = Settings::default();
+        for (raw, want) in [(0, 0), (400, 0), (900, 1500), (2000, 1500), (4200, 5000), (99_999, 5000)] {
+            s.attention_delay_ms = raw;
+            sanitize(&mut s);
+            assert_eq!(s.attention_delay_ms, want, "{raw} should snap to {want}");
+        }
+    }
+
+    #[test]
     fn old_settings_json_lacking_last_seen_version_defaults_empty() {
         let raw = r#"{"voices":{"elevenlabs":"x","mistral":"y"}}"#;
         let s: Settings = serde_json::from_str(raw).unwrap();
         assert_eq!(s.last_seen_version, "");
     }
+
+    #[test]
+    fn settings_file_roundtrip_and_atomic_replace() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+
+        let mut s = Settings::default();
+        s.keys.elevenlabs = "sk-live".into();
+        s.fab_scale = 2.0;
+        write_settings_file(&path, &s).unwrap();
+        let back = read_settings_file(&path);
+        assert_eq!(back.keys.elevenlabs, "sk-live");
+        assert_eq!(back.fab_scale, 2.0);
+
+        // A second save replaces the file whole and leaves no .part litter.
+        s.fab_scale = 1.25;
+        write_settings_file(&path, &s).unwrap();
+        assert_eq!(read_settings_file(&path).fab_scale, 1.25);
+        let strays: Vec<_> = std::fs::read_dir(dir.path())
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_name().to_string_lossy().contains(".part"))
+            .collect();
+        assert!(strays.is_empty());
+    }
+
+    #[test]
+    fn corrupt_settings_file_is_quarantined_not_defaulted_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        // A torn write: valid JSON prefix, truncated mid-key.
+        std::fs::write(&path, r#"{"keys":{"elevenlabs":"sk-precious","mist"#).unwrap();
+
+        let s = read_settings_file(&path);
+        assert_eq!(s.keys.elevenlabs, ""); // boots on defaults…
+
+        // …but the original bytes survive for recovery, out of save()'s path.
+        let quarantined = dir.path().join("settings.json.corrupt");
+        assert!(quarantined.exists());
+        assert!(std::fs::read_to_string(&quarantined).unwrap().contains("sk-precious"));
+        assert!(!path.exists());
+
+        // The next save starts a fresh file and leaves the quarantine alone.
+        write_settings_file(&path, &Settings::default()).unwrap();
+        assert!(path.exists());
+        assert!(quarantined.exists());
+    }
+
+    #[test]
+    fn missing_settings_file_is_a_quiet_first_run() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        let s = read_settings_file(&path);
+        assert_eq!(s.fab_scale, 1.0);
+        assert!(!dir.path().join("settings.json.corrupt").exists());
+    }
+
+    #[test]
+    fn bom_prefixed_settings_still_parse_and_are_not_quarantined() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("settings.json");
+        std::fs::write(&path, "\u{feff}{\"volume\":0.3}").unwrap();
+        let s = read_settings_file(&path);
+        assert!((s.volume - 0.3).abs() < 1e-9);
+        assert!(path.exists());
+        assert!(!dir.path().join("settings.json.corrupt").exists());
+    }
+}
+
+/// A tripped breaker should only be reopened when the user pulls one of the
+/// deliberate retry levers: a key change or a provider re-order. Pure for tests.
+fn breaker_should_reset(prev: &Settings, next: &Settings) -> bool {
+    prev.keys.elevenlabs != next.keys.elevenlabs
+        || prev.keys.mistral != next.keys.mistral
+        || prev.provider_order != next.provider_order
 }
 
 #[tauri::command]
@@ -642,8 +812,9 @@ pub fn set_settings(app: AppHandle, mut settings: Settings) -> Result<SettingsPa
     sanitize(&mut settings);
 
     let state = app.state::<SettingsState>();
-    {
+    let prev = {
         let mut guard = state.0.lock().unwrap();
+        let prev = guard.clone();
         // Monthly counter is Rust-owned; ignore whatever the frontend echoes back.
         settings.monthly = guard.monthly.clone();
         // Window geometry is owned by the Moved/Resized handlers.
@@ -652,7 +823,8 @@ pub fn set_settings(app: AppHandle, mut settings: Settings) -> Result<SettingsPa
         // Hidden sessions are owned by the hide_session command.
         settings.hidden_sessions = guard.hidden_sessions.clone();
         *guard = settings.clone();
-    }
+        prev
+    };
     save(&app, &settings);
 
     crate::shortcuts::apply(&app, &settings);
@@ -664,10 +836,14 @@ pub fn set_settings(app: AppHandle, mut settings: Settings) -> Result<SettingsPa
             eprintln!("[attention] hook install failed: {e}");
         }
     }
-    // Fresh keys deserve a fresh breaker.
-    crate::synth::reset_breaker(&app.state::<crate::synth::SynthState>());
+    // Fresh keys (or a re-picked primary — the deliberate retry lever) deserve
+    // a fresh breaker. Unrelated saves (fabScale drag, theme…) must NOT
+    // resurrect a tripped provider — that would announce + fail on every save.
+    if breaker_should_reset(&prev, &settings) {
+        crate::synth::reset_breaker(&app.state::<crate::synth::SynthState>());
+    }
 
-    let p = payload_from(&settings);
+    let p = payload_from(&app, &settings);
     let _ = app.emit("settings-updated", p.clone());
     Ok(p)
 }

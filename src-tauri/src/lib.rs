@@ -94,6 +94,7 @@ pub fn run() {
             local_tts::list_windows_voices,
             piper_tts::list_piper_voices,
             piper_tts::download_piper_voice,
+            piper_tts::cancel_piper_download,
             piper_tts::remove_piper_voice,
             windows::toggle_panel,
             windows::quit_app,

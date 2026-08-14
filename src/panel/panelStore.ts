@@ -15,6 +15,7 @@ import type {
   EngineState,
   EnvKeys,
   FeedItem,
+  ProviderId,
   ProviderStatus,
   SessionInfo,
   Settings,
@@ -31,6 +32,8 @@ interface PanelState {
   sessions: SessionInfo[];
   settings: Settings | null;
   envKeys: EnvKeys | null;
+  /** Rust's plan head — the provider the next utterance would use. */
+  plannedProvider: ProviderId | null;
   providers: ProviderStatus[];
   backfill: BackfillRow[];
   backfillFor: string | null;
@@ -52,6 +55,7 @@ export const usePanelStore = create<PanelState>((set, get) => ({
   sessions: [],
   settings: null,
   envKeys: null,
+  plannedProvider: null,
   providers: [],
   backfill: [],
   backfillFor: null,
@@ -70,7 +74,14 @@ export const usePanelStore = create<PanelState>((set, get) => ({
       providerStatus(),
       getAppVersion().catch(() => ""),
     ]);
-    set({ settings: payload.settings, envKeys: payload.envKeys, sessions, providers, appVersion });
+    set({
+      settings: payload.settings,
+      envKeys: payload.envKeys,
+      plannedProvider: payload.plannedProvider ?? null,
+      sessions,
+      providers,
+      appVersion,
+    });
 
     // First-ever run: seed silently so What's New only fires on real upgrades.
     if (appVersion && payload.settings.lastSeenVersion === "") {
@@ -78,14 +89,18 @@ export const usePanelStore = create<PanelState>((set, get) => ({
     }
 
     await onSettingsUpdated((p) => {
-      set({ settings: p.settings, envKeys: p.envKeys });
-      // Breaker resets ride every settings save — keep the badges honest.
+      set({ settings: p.settings, envKeys: p.envKeys, plannedProvider: p.plannedProvider ?? null });
+      // Breaker resets ride key/order saves — keep the badges honest.
       void get().refreshProviders();
     });
     await onSessionsUpdated((s) => set({ sessions: s }));
     await onWatcherStatus((s) => set({ watcherStatus: s }));
     await onEngineState((engineState) => {
+      // A provider change mid-walk (401 tripped the breaker) is invisible to
+      // settings events — re-pull statuses so "unavailable" shows immediately.
+      const prevActive = get().engineState?.activeProvider;
       set({ engineState });
+      if (engineState.activeProvider !== prevActive) void get().refreshProviders();
       const sid = engineState.followedSessionId;
       if (sid && sid !== get().backfillFor) {
         set({ backfillFor: sid });
@@ -100,7 +115,11 @@ export const usePanelStore = create<PanelState>((set, get) => ({
     const next = { ...current, ...patch } as Settings;
     set({ settings: next }); // optimistic — the settings-updated echo confirms
     const res = await setSettings(next);
-    set({ settings: res.settings, envKeys: res.envKeys });
+    set({
+      settings: res.settings,
+      envKeys: res.envKeys,
+      plannedProvider: res.plannedProvider ?? null,
+    });
   },
 
   async refreshProviders() {

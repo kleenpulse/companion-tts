@@ -83,14 +83,43 @@ html[data-theme="light"] {
   opacity: 1;
 }
 
-/* the magenta→violet→cyan signature — speaking state only */
+/* the magenta→violet→cyan signature triad */
+:root {
+  --grain-magenta: #f754f1;
+  --grain-violet: #6d28d9;
+  --grain-cyan: #22d3ee;
+}
+
+/* conic form — speaking FAB state only */
 .grainient-ring {
   background: conic-gradient(
     from 0deg,
-    #f754f1,
-    #6d28d9 40%,
-    #22d3ee 70%,
-    #f754f1 100%
+    var(--grain-magenta),
+    var(--grain-violet) 40%,
+    var(--grain-cyan) 70%,
+    var(--grain-magenta) 100%
+  );
+}
+
+/* linear form — progress scrubs. The gradient is anchored to the whole track
+   rather than the fill, so the leading edge walks violet→magenta→cyan as the
+   download advances instead of squashing all three stops into a stub. */
+.grainient-scrub {
+  background: linear-gradient(
+    90deg,
+    var(--grain-violet),
+    var(--grain-magenta) 55%,
+    var(--grain-cyan)
+  );
+}
+
+/* travelling highlight — keeps the bar alive between chunk events */
+.grainient-sheen {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, white 60%, transparent),
+    transparent
   );
 }
 

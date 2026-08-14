@@ -64,7 +64,9 @@ notice: Claude Code gates it behind a presence check, so it stays silent
 whenever you're at the keyboard — never rely on it for permission alerts. The
 helper must print nothing to stdout (a `PermissionRequest` hook's stdout can
 steer the permission decision). Permission alerts ping immediately and arm a
-1.5s grace window before *speaking*, canceled by fresh transcript activity;
+grace window before *speaking*, canceled by fresh transcript activity —
+settings `attentionDelayMs` (Instant/1.5s/3s/5s pills; `ATTENTION_DELAY_STEPS`
+in `settings.rs` snaps stray values so exactly one pill lights);
 AskUserQuestion/ExitPlanMode are announced straight from the transcript (they
 never fire a hook).
 

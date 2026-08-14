@@ -8,9 +8,10 @@
 //! utterances, and requests serialize naturally through the channel.
 
 use serde::Serialize;
+use std::collections::HashSet;
 use std::io::Write as _;
 use std::path::PathBuf;
-use std::sync::{mpsc, OnceLock};
+use std::sync::{mpsc, Mutex, OnceLock};
 use tauri::{AppHandle, Emitter, Manager};
 
 /// Parent dir handed to espeak at init (`PIPER_ESPEAKNG_DATA_DIRECTORY`) —
@@ -54,6 +55,42 @@ fn voices_dir(app: &AppHandle) -> PathBuf {
 fn voice_paths(app: &AppHandle, id: &str) -> (PathBuf, PathBuf) {
     let dir = voices_dir(app);
     (dir.join(format!("{id}.onnx")), dir.join(format!("{id}.onnx.json")))
+}
+
+/// The two files a voice is made of, in download order (tiny config first).
+const VOICE_EXTS: [&str; 2] = [".onnx.json", ".onnx"];
+
+/// Delete every trace of a voice, finished or half-written. The cancel and
+/// error paths both need this: the config file renames into place before the
+/// model starts, and a `.part` left behind is litter the UI can't clear.
+fn wipe_voice_files(app: &AppHandle, id: &str) {
+    let dir = voices_dir(app);
+    for ext in VOICE_EXTS {
+        let _ = std::fs::remove_file(dir.join(format!("{id}{ext}")));
+        let _ = std::fs::remove_file(dir.join(format!("{id}{ext}.part")));
+    }
+}
+
+/* ---------- download cancellation ---------- */
+
+/// Ids the UI has asked to abort. The download loop checks this between chunks;
+/// a set (not a bool) so concurrent downloads can't cancel each other.
+static CANCELS: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+fn cancels() -> &'static Mutex<HashSet<String>> {
+    CANCELS.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn request_cancel(id: &str) {
+    cancels().lock().unwrap().insert(id.to_string());
+}
+
+fn is_canceled(id: &str) -> bool {
+    cancels().lock().unwrap().contains(id)
+}
+
+fn clear_cancel(id: &str) {
+    cancels().lock().unwrap().remove(id);
 }
 
 /// Both model files on disk — the provider's eligibility test.
@@ -198,13 +235,26 @@ struct DownloadProgress<'a> {
     id: &'a str,
     received: u64,
     total: u64,
-    phase: &'a str, // "downloading" | "done" | "error"
+    phase: &'a str, // "downloading" | "done" | "canceled" | "error"
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
 }
 
+/// How a transfer ended, short of failing outright.
+enum Outcome {
+    Done,
+    Canceled,
+}
+
 fn emit_progress(app: &AppHandle, id: &str, received: u64, total: u64, phase: &str, error: Option<String>) {
     let _ = app.emit("piper-download", DownloadProgress { id, received, total, phase, error });
+}
+
+/// Ask an in-flight download to stop. Takes effect at the next chunk boundary;
+/// the download itself emits the terminal "canceled" event.
+#[tauri::command]
+pub fn cancel_piper_download(id: String) {
+    request_cancel(&id);
 }
 
 #[tauri::command]
@@ -214,19 +264,30 @@ pub async fn download_piper_voice(app: AppHandle, id: String) -> Result<(), Stri
         .find(|e| e.id == id)
         .ok_or_else(|| format!("unknown voice: {id}"))?;
 
+    // A flag left over from a previous run must never kill a fresh attempt.
+    clear_cancel(&id);
     let result = download_voice_files(&app, entry).await;
+    clear_cancel(&id);
+
     match &result {
-        Ok(()) => {
+        Ok(Outcome::Done) => {
             emit_progress(&app, &id, 0, 0, "done", None);
             // First voice in = make it the selected one (never overrides a choice).
             crate::settings::set_piper_voice_if_empty(&app, &id);
         }
-        Err(e) => emit_progress(&app, &id, 0, 0, "error", Some(e.clone())),
+        Ok(Outcome::Canceled) => {
+            wipe_voice_files(&app, &id);
+            emit_progress(&app, &id, 0, 0, "canceled", None);
+        }
+        Err(e) => {
+            wipe_voice_files(&app, &id);
+            emit_progress(&app, &id, 0, 0, "error", Some(e.clone()));
+        }
     }
-    result
+    result.map(|_| ())
 }
 
-async fn download_voice_files(app: &AppHandle, entry: &CatalogEntry) -> Result<(), String> {
+async fn download_voice_files(app: &AppHandle, entry: &CatalogEntry) -> Result<Outcome, String> {
     let dir = voices_dir(app);
     std::fs::create_dir_all(&dir).map_err(|e| format!("mkdir: {e}"))?;
     // Model downloads run minutes, not seconds — the synth client's 20s total
@@ -237,7 +298,10 @@ async fn download_voice_files(app: &AppHandle, entry: &CatalogEntry) -> Result<(
         .map_err(|e| e.to_string())?;
 
     // Config first (tiny), then the model; progress tracks the model bytes.
-    for ext in [".onnx.json", ".onnx"] {
+    for ext in VOICE_EXTS {
+        if is_canceled(entry.id) {
+            return Ok(Outcome::Canceled);
+        }
         let url = hf_url(entry, ext);
         let final_path = dir.join(format!("{}{ext}", entry.id));
         let part_path = dir.join(format!("{}{ext}.part", entry.id));
@@ -253,22 +317,41 @@ async fn download_voice_files(app: &AppHandle, entry: &CatalogEntry) -> Result<(
         let total = res.content_length().unwrap_or(0);
         let mut received: u64 = 0;
         let mut last_emit: u64 = 0;
+        let mut last_at = std::time::Instant::now();
         let mut file = std::fs::File::create(&part_path).map_err(|e| format!("create: {e}"))?;
+
+        // Announce the size before the first byte lands so the UI can leave
+        // its indeterminate sweep immediately.
+        if ext == ".onnx" && total > 0 {
+            emit_progress(app, entry.id, 0, total, "downloading", None);
+        }
 
         let mut stream = res;
         while let Some(chunk) = stream.chunk().await.map_err(|e| format!("stream: {e}"))? {
+            // Checked per chunk (~64KB): a lock read next to a disk write is free,
+            // and it bounds the abort latency to one chunk rather than one file.
+            if is_canceled(entry.id) {
+                drop(file);
+                return Ok(Outcome::Canceled);
+            }
             file.write_all(&chunk).map_err(|e| format!("write: {e}"))?;
             received += chunk.len() as u64;
-            // Progress only for the big file, throttled to ~every 512KB.
-            if ext == ".onnx" && received - last_emit >= 512 * 1024 {
+            // Progress only for the big file. ~128KB grain gives the panel's
+            // spring fine-grained targets; the 40ms floor keeps a fast link
+            // from flooding IPC (≤25 events/s either way).
+            if ext == ".onnx"
+                && received - last_emit >= 128 * 1024
+                && last_at.elapsed() >= std::time::Duration::from_millis(40)
+            {
                 last_emit = received;
+                last_at = std::time::Instant::now();
                 emit_progress(app, entry.id, received, total, "downloading", None);
             }
         }
         drop(file);
         std::fs::rename(&part_path, &final_path).map_err(|e| format!("rename: {e}"))?;
     }
-    Ok(())
+    Ok(Outcome::Done)
 }
 
 #[tauri::command]
@@ -286,6 +369,22 @@ pub fn remove_piper_voice(app: AppHandle, id: String) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cancel_flag_is_per_id_and_clears() {
+        clear_cancel("voice-a");
+        clear_cancel("voice-b");
+        assert!(!is_canceled("voice-a"));
+
+        request_cancel("voice-a");
+        assert!(is_canceled("voice-a"));
+        // One download's abort must not take its neighbour down with it.
+        assert!(!is_canceled("voice-b"));
+
+        // download_piper_voice clears on entry — a stale flag can't kill a retry.
+        clear_cancel("voice-a");
+        assert!(!is_canceled("voice-a"));
+    }
 
     #[test]
     fn wav_header_shape() {
