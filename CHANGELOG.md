@@ -10,6 +10,8 @@ commits, and tags.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-14
+
 ### Added
 
 - Every voice change is announced aloud — in the *new* voice — unless the app
